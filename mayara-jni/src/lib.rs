@@ -25,6 +25,7 @@
 
 use android_logger::Config;
 use anyhow::Result;
+use clap::Parser;
 use jni::objects::JClass;
 use jni::sys::{jboolean, jint, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
@@ -195,7 +196,7 @@ pub extern "system" fn Java_com_marineyachtradar_mayara_jni_RadarJni_nativeStop<
 /// Called from the JVM.
 #[no_mangle]
 pub extern "system" fn Java_com_marineyachtradar_mayara_jni_RadarJni_nativeGetLogs<'local>(
-    mut env: JNIEnv<'local>,
+    env: JNIEnv<'local>,
     _class: JClass<'local>,
 ) -> jstring {
     let text = match log_buf().lock() {
