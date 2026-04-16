@@ -36,11 +36,15 @@ jobs:
         run: cargo install cargo-ndk --locked
 
       - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
+        uses: android-actions/setup-android@v3
         with:
-          ndk-version: r26.1.10909125
-          add-to-path: true
-          local-cache: true
+          cmdline-tools-version: '12.0'
+      
+      - name: Install NDK using sdkmanager  
+        run: |
+          # Install NDK r26 via sdkmanager
+          echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: Verify Rust and cargo-ndk
         run: |
