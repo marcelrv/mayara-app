@@ -7,6 +7,7 @@ import com.marineyachtradar.mayara.data.api.SpokeWebSocketClient
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.domain.RadarRepository
 import com.marineyachtradar.mayara.proto.RadarMessage
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -45,8 +46,9 @@ class IntegrationEmbeddedModeTest {
 
     @AfterEach
     fun tearDown() {
-        repository.disconnect()
-        server.shutdown()
+        if (::repository.isInitialized) repository.disconnect()
+        testScope.cancel()
+        try { server.shutdown() } catch (_: Exception) { /* OkHttp WS close race */ }
     }
 
     // ------------------------------------------------------------------

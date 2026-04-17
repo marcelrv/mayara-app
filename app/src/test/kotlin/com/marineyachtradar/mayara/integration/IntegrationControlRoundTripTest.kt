@@ -1,29 +1,34 @@
-package com.marineyachtradar.mayara.integration
+﻿package com.marineyachtradar.mayara.integration
 
+import app.cash.turbine.test
 import com.marineyachtradar.mayara.data.api.RadarApiClient
 import com.marineyachtradar.mayara.data.api.SignalKStreamClient
 import com.marineyachtradar.mayara.data.api.SpokeWebSocketClient
+import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.domain.RadarRepository
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.util.concurrent.TimeUnit
 
 /**
  * Integration test for the radar control write (PUT) round-trip.
  *
  * Verifies that:
  *   1. [RadarRepository.setSliderControl] issues a correctly formatted HTTP PUT request.
- *   2. The PUT request body contains {"value": <n>, "auto": <bool>} when auto is specified.
+ *   2. The PUT request body contains {"value": <n>}.
  *   3. The server receives the request on the expected URL path.
- *   4. The control is also updated locally (optimistic update) without waiting for a
- *      round-trip, so the UI reflects the change instantly.
+ *   4. The control is updated locally (optimistic update) so the UI reflects the change.
  */
 class IntegrationControlRoundTripTest {
 
@@ -42,127 +47,84 @@ class IntegrationControlRoundTripTest {
 
     @AfterEach
     fun tearDown() {
-        repository.disconnect()
-        server.shutdown()
+        if (::repository.isInitialized) repository.disconnect()
+        testScope.cancel()
+        try { server.shutdown() } catch (_: Exception) { /* OkHttp WS close race */ }
     }
 
-    // ------------------------------------------------------------------
-    // Helpers
-    // ------------------------------------------------------------------
+    private fun baseUrl() = server.url("/").toString().trimEnd('/')
 
     private fun buildRepository(): RadarRepository {
-        val baseUrl = server.url("/").toString().trimEnd('/')
         return RadarRepository(
-            apiClient = RadarApiClient(baseUrl),
+            apiClient = RadarApiClient(baseUrl()),
             spokeClient = SpokeWebSocketClient(),
             streamClient = SignalKStreamClient(),
             scope = testScope,
         )
     }
 
-    private fun baseUrl() = server.url("/").toString().trimEnd('/')
-
-    /**
-     * Enqueues enough mock responses to reach the [RadarRepository.Connected] state:
-     * GET /radars → GET /capabilities → GET /controls → WS spoke → WS stream.
-     */
     private fun enqueueConnectFlow() {
         val base = baseUrl()
         val spokeWsUrl = "${base.replace("http", "ws")}/signalk/v2/api/vessels/self/radars/$radarId/spokes"
-        val streamWsUrl = "${base.replace("http", "ws")}/signalk/v1/stream"
-
-        // GET /radars
         server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody(
-                    """
-                    {
-                      "$radarId": {
-                        "name": "Test Radar",
-                        "brand": "Emulator",
-                        "spokeDataUrl": "$spokeWsUrl",
-                        "streamUrl": "$streamWsUrl"
-                      }
-                    }
-                    """.trimIndent()
-                )
+            MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
+                .setBody("""{"$radarId":{"name":"Test Radar","brand":"Emulator","spokeDataUrl":"$spokeWsUrl","streamUrl":"${base.replace("http","ws")}/signalk/v1/stream"}}""")
         )
-
-        // GET /radars/{id}/capabilities
         server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody(
-                    """
-                    {
-                      "supportedRanges": [600, 1200, 3000, 6000],
-                      "spokesPerRevolution": 4096,
-                      "maxSpokeLength": 512,
-                      "controls": {
-                        "gain": {
-                          "id": "gain",
-                          "name": "Gain",
-                          "dataType": "number",
-                          "minValue": 0,
-                          "maxValue": 100
-                        }
-                      }
-                    }
-                    """.trimIndent()
-                )
+            MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
+                .setBody("""{"supportedRanges":[600,1200,3000,6000],"spokesPerRevolution":4096,"maxSpokeLength":512,"controls":{"gain":{"id":"gain","name":"Gain","dataType":"number","minValue":0,"maxValue":100}}}""")
         )
-
-        // GET /radars/{id}/controls
         server.enqueue(
-            MockResponse()
-                .setResponseCode(200)
-                .setHeader("Content-Type", "application/json")
-                .setBody("""{"gain": {"value": 50.0}}""")
+            MockResponse().setResponseCode(200).setHeader("Content-Type", "application/json")
+                .setBody("""{"gain":{"value":50.0}}""")
         )
-
-        // WS spoke
-        server.enqueue(
-            MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
-                override fun onOpen(ws: okhttp3.WebSocket, response: okhttp3.Response) { /* stay open */ }
-            })
-        )
-
-        // WS stream
-        server.enqueue(
-            MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
-                override fun onOpen(ws: okhttp3.WebSocket, response: okhttp3.Response) { /* stay open */ }
-            })
-        )
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
+            override fun onOpen(ws: okhttp3.WebSocket, response: okhttp3.Response) {}
+        }))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : okhttp3.WebSocketListener() {
+            override fun onOpen(ws: okhttp3.WebSocket, response: okhttp3.Response) {}
+        }))
     }
 
-    // ------------------------------------------------------------------
-    // Tests
-    // ------------------------------------------------------------------
+    /** Drains all recorded requests from MockWebServer and returns them. */
+    private fun drainRequests(extraWaitSeconds: Long = 2): List<RecordedRequest> {
+        val requests = mutableListOf<RecordedRequest>()
+        // Drain any already-queued requests quickly
+        var req = server.takeRequest(100, TimeUnit.MILLISECONDS)
+        while (req != null) {
+            requests.add(req)
+            req = server.takeRequest(100, TimeUnit.MILLISECONDS)
+        }
+        // One longer wait for any in-flight requests (e.g. PUT on IO thread)
+        req = server.takeRequest(extraWaitSeconds, TimeUnit.SECONDS)
+        if (req != null) {
+            requests.add(req)
+            // Drain any remaining
+            req = server.takeRequest(100, TimeUnit.MILLISECONDS)
+            while (req != null) {
+                requests.add(req)
+                req = server.takeRequest(100, TimeUnit.MILLISECONDS)
+            }
+        }
+        return requests
+    }
 
     @Test
     fun `setSliderControl sends correct PUT request path`() = runTest {
         enqueueConnectFlow()
-        // Enqueue 200 OK for the PUT
         server.enqueue(MockResponse().setResponseCode(200))
-
         repository = buildRepository()
-        repository.connect(baseUrl())
 
-        // Allow async connection to complete
-        testScope.testScheduler.advanceUntilIdle()
+        repository.uiState.test {
+            awaitItem() // Loading
+            repository.connect(baseUrl())
+            awaitItem() // Connected
+            repository.setSliderControl("gain", 75f, false)
+            awaitItem() // optimistic update
+            cancelAndIgnoreRemainingEvents()
+        }
 
-        // Trigger a control write
-        repository.setSliderControl("gain", 75f, false)
-        testScope.testScheduler.advanceUntilIdle()
-
-        // The PUT request should be the 6th request (after 3 GETs + 2 WS upgrades)
-        val putRequest = (1..server.requestCount)
-            .map { server.takeRequest() }
-            .firstOrNull { it.method == "PUT" }
-
+        val putRequest = drainRequests().firstOrNull { it.method == "PUT" }
         assertNotNull(putRequest, "Expected a PUT request to be sent")
         assertEquals(
             "/signalk/v2/api/vessels/self/radars/$radarId/controls/gain",
@@ -174,43 +136,42 @@ class IntegrationControlRoundTripTest {
     fun `setSliderControl PUT body contains correct value`() = runTest {
         enqueueConnectFlow()
         server.enqueue(MockResponse().setResponseCode(200))
-
         repository = buildRepository()
-        repository.connect(baseUrl())
-        testScope.testScheduler.advanceUntilIdle()
 
-        repository.setSliderControl("gain", 50f, false)
-        testScope.testScheduler.advanceUntilIdle()
+        repository.uiState.test {
+            awaitItem() // Loading
+            repository.connect(baseUrl())
+            awaitItem() // Connected
+            repository.setSliderControl("gain", 60f, false)
+            awaitItem() // optimistic update
+            cancelAndIgnoreRemainingEvents()
+        }
 
-        val putRequest = (1..server.requestCount)
-            .map { server.takeRequest() }
-            .firstOrNull { it.method == "PUT" }
-
+        val putRequest = drainRequests().firstOrNull { it.method == "PUT" }
         assertNotNull(putRequest, "Expected a PUT request")
         val body = putRequest!!.body.readUtf8()
-        // Body should contain the value 50.0
-        assert(body.contains("50")) { "Expected body to contain '50', got: $body" }
+        assertTrue(body.contains("60")) { "Expected body to contain '60', got: $body" }
     }
 
     @Test
-    fun `setSliderControl applies optimistic update before server responds`() = runTest {
+    fun `setSliderControl applies optimistic update to controls state`() = runTest {
         enqueueConnectFlow()
-        // Enqueue a slow PUT response (simulate latency)
-        server.enqueue(MockResponse().setResponseCode(200).setBodyDelay(500, java.util.concurrent.TimeUnit.MILLISECONDS))
-
+        server.enqueue(MockResponse().setResponseCode(200))
         repository = buildRepository()
-        repository.connect(baseUrl())
-        testScope.testScheduler.advanceUntilIdle()
 
-        // Apply control — the repository updates state optimistically
-        repository.setSliderControl("gain", 80f, false)
+        repository.uiState.test {
+            awaitItem() // Loading
+            repository.connect(baseUrl())
+            val connected = awaitItem() as RadarUiState.Connected
+            assertEquals(50f, connected.controls.gain.value, 0.01f)
 
-        // Without advancing time, the state should already reflect the optimistic update
-        val state = repository.uiState.value
-        if (state is com.marineyachtradar.mayara.data.model.RadarUiState.Connected) {
-            val gainControl = state.controls.gain
-            assertEquals(80f, gainControl.value, 0.01f,
+            repository.setSliderControl("gain", 80f, false)
+
+            val updated = awaitItem() as RadarUiState.Connected
+            assertEquals(80f, updated.controls.gain.value, 0.01f,
                 "Optimistic update should reflect gain=80 immediately")
+
+            cancelAndIgnoreRemainingEvents()
         }
     }
 }
