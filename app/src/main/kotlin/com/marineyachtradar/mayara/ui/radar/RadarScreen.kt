@@ -1,12 +1,19 @@
 package com.marineyachtradar.mayara.ui.radar
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
@@ -33,10 +40,9 @@ import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
  */
 @Composable
 fun RadarScreen(
-    // TODO: inject ViewModel when RadarViewModel is implemented (Phase 2)
+    viewModel: RadarViewModel = viewModel(),
 ) {
-    // Placeholder state until ViewModel + Repository are wired in Phase 2.
-    val uiState: RadarUiState = RadarUiState.Loading
+    val uiState by viewModel.uiState.collectAsState()
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -45,35 +51,53 @@ fun RadarScreen(
 
         when (uiState) {
             is RadarUiState.Connected -> {
+                val connected = uiState as RadarUiState.Connected
                 // Layer 1: HUD (top-left)
                 HudOverlay(
-                    navigationData = uiState.navigationData,
+                    navigationData = connected.navigationData,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
 
                 // Layer 2: Power toggle (top-right)
                 PowerToggle(
-                    powerState = uiState.powerState,
-                    onPowerAction = { /* TODO: ViewModel.onPowerAction(it) */ },
+                    powerState = connected.powerState,
+                    onPowerAction = { viewModel.onPowerAction(it) },
                     modifier = Modifier.align(Alignment.TopEnd),
                 )
 
                 // Layer 3: Range controls (bottom-right)
                 RangeControls(
-                    ranges = uiState.capabilities.ranges,
-                    currentIndex = uiState.currentRangeIndex,
-                    onRangeUp = { /* TODO: ViewModel.onRangeUp() */ },
-                    onRangeDown = { /* TODO: ViewModel.onRangeDown() */ },
+                    ranges = connected.capabilities.ranges,
+                    currentIndex = connected.currentRangeIndex,
+                    onRangeUp = { viewModel.onRangeUp() },
+                    onRangeDown = { viewModel.onRangeDown() },
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
             }
 
             is RadarUiState.Loading -> {
-                // TODO Phase 4: Show a loading/connecting overlay
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Connecting to radar…",
+                        color = MaterialTheme.colorScheme.onBackground,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
 
             is RadarUiState.Error -> {
-                // TODO Phase 4: Show an error snackbar or dialog
+                val error = uiState as RadarUiState.Error
+                Text(
+                    text = "Error: ${error.message}",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             }
         }
     }
