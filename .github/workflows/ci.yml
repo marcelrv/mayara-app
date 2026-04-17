@@ -183,12 +183,23 @@ jobs:
           # x86_64 stub (EM_X86_64 = 0x3e)
           printf '\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x03\x00\x3e\x00\x01\x00\x00\x00\x00\x00\x00\x00@\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00@\x00\x38\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > app/src/main/jniLibs/x86_64/libradar.so
 
+      - name: Verify APK native library packaging
+        run: |
+          ./gradlew assembleDebug --stacktrace
+          echo "=== Native libs in debug APK ==="
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep "lib/" || echo "No lib/ entries found"
+
+      - name: Compile instrumented test APK (verify no compilation errors)
+        run: ./gradlew assembleDebugAndroidTest --stacktrace
+
       - name: Run instrumented tests on AVD (x86_64)
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 34
           arch: x86_64
           target: default
+          disable-animations: true
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: ./gradlew connectedAndroidTest --stacktrace
 
       - name: Upload instrumented test results
