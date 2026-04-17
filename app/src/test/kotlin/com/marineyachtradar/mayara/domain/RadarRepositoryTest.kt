@@ -250,4 +250,93 @@ class RadarRepositoryTest {
 
         coVerify { apiClient.putControl("emulator_1", "range", 12000f, null) }
     }
+
+    @Test
+    fun `setEnumControl applies optimistic update and calls putControl`() = runTest {
+        val capabilitiesWithEnum = testCapabilities.copy(
+            controls = testCapabilities.controls + mapOf(
+                "interferenceRejection" to ControlDefinition(
+                    id = "interferenceRejection",
+                    name = "Interference",
+                    type = ControlType.ENUM,
+                    options = listOf("Off", "Low", "Medium", "High"),
+                )
+            )
+        )
+        val valuesWithEnum = testControlValues + mapOf(
+            "interferenceRejection" to ControlValue(0f)
+        )
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns capabilitiesWithEnum
+        coEvery { apiClient.getControls("emulator_1") } returns valuesWithEnum
+        coEvery { apiClient.putControl(any(), any(), any(), any()) } returns Unit
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        // Wait for Connected state
+        val afterConnect = repository.uiState.value
+        if (afterConnect is RadarUiState.Connected) {
+            assertEquals(0, afterConnect.controls.interferenceRejection?.selectedIndex)
+        }
+
+        repository.setEnumControl("interferenceRejection", 2)
+
+        val updated = repository.uiState.value as? RadarUiState.Connected
+        if (updated != null) {
+            assertEquals(2, updated.controls.interferenceRejection?.selectedIndex)
+        }
+
+        coVerify { apiClient.putControl("emulator_1", "interferenceRejection", 2f, null) }
+    }
+
+    @Test
+    fun `setEnumControl on unknown controlId does not change state`() = runTest {
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns testControlValues
+        coEvery { apiClient.putControl(any(), any(), any(), any()) } returns Unit
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        val before = repository.uiState.value
+        repository.setEnumControl("unknownControl", 5)
+        val after = repository.uiState.value
+
+        // State should be identical (the withEnum else branch returns `this`)
+        assertEquals(before, after)
+    }
+
+    @Test
+    fun `setOrientation updates orientation in controls state without REST call`() = runTest {
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns testControlValues
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        repository.setOrientation(RadarOrientation.NORTH_UP)
+
+        val updated = repository.uiState.value as? RadarUiState.Connected
+        if (updated != null) {
+            assertEquals(RadarOrientation.NORTH_UP, updated.controls.orientation)
+        }
+        coVerify(exactly = 0) { apiClient.putControl(any(), eq("orientation"), any(), any()) }
+    }
+
+    @Test
+    fun `setPowerState sends PUT control for power without optimistic update`() = runTest {
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns testControlValues
+        coEvery { apiClient.putControl(any(), any(), any(), any()) } returns Unit
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+        repository.setPowerState(PowerState.OFF)
+
+        coVerify { apiClient.putControl("emulator_1", "power", 0f, null) }
+    }
 }

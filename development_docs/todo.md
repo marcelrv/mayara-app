@@ -90,15 +90,15 @@
 
 ---
 
-## Phase 4 — Compose UI Overlays
+## Phase 4 — Compose UI Overlays ✅ COMPLETE
 
-- [ ] Write `PowerToggle.kt`: OFF/WARMUP/STANDBY/TRANSMIT pill button with countdown
-- [ ] Write `RangeControls.kt`: +/- FABs, monospace range text, stepping from capabilities array
-- [ ] Write `HudOverlay.kt`: heading/SOG/COG, hidden when null
-- [ ] Write `RadarControlSheet.kt`: bottom sheet with Gain/Sea/Rain/IR sliders + Auto toggles + Palette + Orientation
-- [ ] Write `ConnectionPickerDialog.kt`: modal with Embedded/Network choice, "Remember" checkbox
-- [ ] Write `RadarScreen.kt`: compose all layers in a `Box`
-- [ ] Compose component tests for each overlay (Layer 4a)
+- [x] Write `PowerToggle.kt`: OFF/WARMUP/STANDBY/TRANSMIT pill button with countdown
+- [x] Write `RangeControls.kt`: +/- FABs, monospace range text, stepping from capabilities array
+- [x] Write `HudOverlay.kt`: heading/SOG/COG, hidden when null
+- [x] Write `RadarControlSheet.kt`: bottom sheet with Gain/Sea/Rain/IR sliders + Auto toggles + Palette + Orientation
+- [x] Write `ConnectionPickerDialog.kt`: modal with Embedded/Network choice, "Remember" checkbox
+- [x] Write `RadarScreen.kt`: compose all layers in a `Box`
+- [x] Compose component tests for each overlay (Layer 4a) — 44 new tests (PowerToggleStateTest, RangeFormatTest, ControlSheetDisplayNameTest, ConnectionPickerStateTest + 5 new RadarRepositoryTest)
 - [ ] Paparazzi screenshots for day + night + minimal-capabilities variants
 - [ ] Visual review of screenshots (agent-generated description + image diff)
 

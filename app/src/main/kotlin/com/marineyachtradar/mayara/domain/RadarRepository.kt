@@ -209,6 +209,28 @@ class RadarRepository(
         _uiState.value = state.copy(controls = state.controls.copy(orientation = orientation))
     }
 
+    /**
+     * Write an enum (segmented/chip) control value.
+     *
+     * Applies an optimistic update immediately, then sends the REST PUT in the background.
+     * The [index] is stored as a float on the wire (e.g., 0 = Off, 1 = Low, …).
+     */
+    fun setEnumControl(controlId: String, index: Int) {
+        val state = _uiState.value as? RadarUiState.Connected ?: return
+        val radarId = state.radar.id
+
+        // Optimistic update
+        _uiState.value = state.copy(controls = state.controls.withEnum(controlId, index))
+
+        scope.launch {
+            try {
+                apiClient.putControl(radarId, controlId, index.toFloat())
+            } catch (_: Exception) {
+                // Server-side revert will arrive via the stream
+            }
+        }
+    }
+
     /** Update navigation data (heading, SOG, COG) from an external NMEA/SignalK source. */
     fun updateNavigationData(navData: NavigationData?) {
         val state = _uiState.value as? RadarUiState.Connected ?: return
@@ -285,4 +307,11 @@ private fun ControlsState.withSlider(id: String, value: Float, auto: Boolean?): 
         "rain" -> copy(rainClutter = rainClutter?.copy(value = value, isAuto = autoVal))
         else -> this
     }
+}
+
+private fun ControlsState.withEnum(id: String, index: Int): ControlsState = when (id) {
+    "interferenceRejection" -> copy(
+        interferenceRejection = interferenceRejection?.copy(selectedIndex = index)
+    )
+    else -> this
 }

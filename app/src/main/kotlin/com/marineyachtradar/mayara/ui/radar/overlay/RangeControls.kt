@@ -81,7 +81,7 @@ fun RangeControls(
 }
 
 /** Format a range in metres to a human-readable string (NM with one decimal). */
-private fun formatRange(metres: Int): String {
+internal fun formatRange(metres: Int): String {
     val nm = metres / 1852.0
     return "%.1f NM".format(nm)
 }

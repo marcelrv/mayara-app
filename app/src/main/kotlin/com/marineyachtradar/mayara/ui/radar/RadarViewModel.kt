@@ -5,10 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.marineyachtradar.mayara.data.api.RadarApiClient
 import com.marineyachtradar.mayara.data.api.SignalKStreamClient
 import com.marineyachtradar.mayara.data.api.SpokeWebSocketClient
+import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.PowerState
+import com.marineyachtradar.mayara.data.model.RadarOrientation
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.domain.RadarRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * ViewModel for [RadarScreen].
@@ -40,6 +44,14 @@ class RadarViewModel : ViewModel() {
     /** Exposed so the GL renderer can subscribe to spoke data. */
     val spokeFlow = repository.spokeFlow
 
+    /** Controls visibility of the advanced radar control bottom sheet. */
+    private val _showControlSheet = MutableStateFlow(false)
+    val showControlSheet: StateFlow<Boolean> = _showControlSheet.asStateFlow()
+
+    /** Controls visibility of the connection picker dialog. */
+    private val _showConnectionPicker = MutableStateFlow(false)
+    val showConnectionPicker: StateFlow<Boolean> = _showConnectionPicker.asStateFlow()
+
     init {
         // Attempt to connect to the embedded JNI server.
         // If the JNI layer hasn't started the server yet, this will fail with a connection error,
@@ -48,25 +60,98 @@ class RadarViewModel : ViewModel() {
         repository.connect(EMBEDDED_BASE_URL)
     }
 
-    fun onPowerAction(action: PowerState) {
-        // TODO Phase 4: map power action to control write
+    // ------------------------------------------------------------------
+    // Bottom sheet visibility
+    // ------------------------------------------------------------------
+
+    fun onShowControlSheet() {
+        _showControlSheet.value = true
     }
 
+    fun onDismissControlSheet() {
+        _showControlSheet.value = false
+    }
+
+    fun onShowConnectionPicker() {
+        _showConnectionPicker.value = true
+    }
+
+    fun onDismissConnectionPicker() {
+        _showConnectionPicker.value = false
+    }
+
+    // ------------------------------------------------------------------
+    // Power control
+    // ------------------------------------------------------------------
+
+    fun onPowerAction(target: PowerState) {
+        repository.setPowerState(target)
+    }
+
+    // ------------------------------------------------------------------
+    // Range controls
+    // ------------------------------------------------------------------
+
+    /**
+     * Zoom in: step to the next smaller range (lower index in capabilities.ranges).
+     *
+     * [RadarCapabilities.ranges] is ordered ascending (smallest range first), so
+     * "zoom in" means decreasing the index.
+     */
     fun onRangeUp() {
+        val state = uiState.value as? RadarUiState.Connected ?: return
+        val nextIndex = (state.currentRangeIndex - 1).coerceAtLeast(0)
+        if (nextIndex != state.currentRangeIndex) {
+            repository.setRangeIndex(nextIndex)
+        }
+    }
+
+    /**
+     * Zoom out: step to the next larger range (higher index in capabilities.ranges).
+     */
+    fun onRangeDown() {
         val state = uiState.value as? RadarUiState.Connected ?: return
         val nextIndex = (state.currentRangeIndex + 1)
             .coerceAtMost(state.capabilities.ranges.lastIndex)
         if (nextIndex != state.currentRangeIndex) {
-            repository.setSliderControl("range", state.capabilities.ranges[nextIndex].toFloat())
+            repository.setRangeIndex(nextIndex)
         }
     }
 
-    fun onRangeDown() {
-        val state = uiState.value as? RadarUiState.Connected ?: return
-        val nextIndex = (state.currentRangeIndex - 1).coerceAtLeast(0)
-        if (nextIndex != state.currentRangeIndex) {
-            repository.setSliderControl("range", state.capabilities.ranges[nextIndex].toFloat())
-        }
+    // ------------------------------------------------------------------
+    // Slider controls (Gain, Sea, Rain)
+    // ------------------------------------------------------------------
+
+    fun onGainChange(value: Float, isAuto: Boolean) {
+        repository.setSliderControl("gain", value, isAuto)
+    }
+
+    fun onSeaChange(value: Float, isAuto: Boolean) {
+        repository.setSliderControl("sea", value, isAuto)
+    }
+
+    fun onRainChange(value: Float) {
+        repository.setSliderControl("rain", value, false)
+    }
+
+    // ------------------------------------------------------------------
+    // Enum controls (Interference Rejection)
+    // ------------------------------------------------------------------
+
+    fun onInterferenceChange(index: Int) {
+        repository.setEnumControl("interferenceRejection", index)
+    }
+
+    // ------------------------------------------------------------------
+    // UI-only preferences (no server call)
+    // ------------------------------------------------------------------
+
+    fun onPaletteChange(palette: ColorPalette) {
+        repository.setPalette(palette)
+    }
+
+    fun onOrientationChange(orientation: RadarOrientation) {
+        repository.setOrientation(orientation)
     }
 
     override fun onCleared() {

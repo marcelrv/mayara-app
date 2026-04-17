@@ -5,7 +5,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.RadarUiState
+import com.marineyachtradar.mayara.ui.connection.ConnectionPickerDialog
+import com.marineyachtradar.mayara.ui.radar.bottomsheet.RadarControlSheet
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
 import com.marineyachtradar.mayara.ui.radar.overlay.PowerToggle
 import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
@@ -29,15 +37,14 @@ import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
  * - Layer 1 (top-left):   [HudOverlay] — Heading / SOG / COG
  * - Layer 2 (top-right):  [PowerToggle] — OFF/WARMUP/STANDBY/TRANSMIT pill
  * - Layer 3 (bottom-right): [RangeControls] — +/- range FABs
- * - Layer 4 (bottom):     Bottom sheet handle + [RadarControlSheet] (swipe-up)
+ * - Layer 4 (bottom-center): [FloatingActionButton] — opens [RadarControlSheet]
+ * - Layer 5 (overlay): [RadarControlSheet] — swipe-up bottom sheet (spec §3.4)
+ * - Layer 6 (overlay): [ConnectionPickerDialog] — on first launch or mode switch (spec §2)
  *
  * Gesture rules:
  *  - Single-finger drag → pan radar center
  *  - Double-tap → reset pan to center
  *  - Pinch gesture → **discarded** (zoom via range buttons only; see spec §3.2)
- *
- * TODO Phase 3: wire [RadarGLView] and gesture handling.
- * TODO Phase 4: add [RadarControlSheet] bottom sheet.
  */
 @Composable
 fun RadarScreen(
@@ -45,6 +52,8 @@ fun RadarScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val latestSpoke by viewModel.spokeFlow.collectAsState()
+    val showControlSheet by viewModel.showControlSheet.collectAsState()
+    val showConnectionPicker by viewModel.showConnectionPicker.collectAsState()
 
     val spokesPerRevolution = (uiState as? RadarUiState.Connected)
         ?.capabilities?.spokesPerRevolution ?: 2048
@@ -64,6 +73,7 @@ fun RadarScreen(
         when (uiState) {
             is RadarUiState.Connected -> {
                 val connected = uiState as RadarUiState.Connected
+
                 // Layer 1: HUD (top-left)
                 HudOverlay(
                     navigationData = connected.navigationData,
@@ -85,6 +95,22 @@ fun RadarScreen(
                     onRangeDown = { viewModel.onRangeDown() },
                     modifier = Modifier.align(Alignment.BottomEnd),
                 )
+
+                // Layer 4: Radar settings FAB (bottom-center, spec §3.4)
+                FloatingActionButton(
+                    onClick = { viewModel.onShowControlSheet() },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 16.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Tune,
+                        contentDescription = "Radar Settings",
+                    )
+                }
             }
 
             is RadarUiState.Loading -> {
@@ -111,6 +137,35 @@ fun RadarScreen(
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
+        }
+
+        // Layer 5: Advanced radar control bottom sheet (spec §3.4)
+        if (showControlSheet) {
+            val connected = uiState as? RadarUiState.Connected
+            if (connected != null) {
+                RadarControlSheet(
+                    controls = connected.controls,
+                    onGainChange = { v, auto -> viewModel.onGainChange(v, auto) },
+                    onSeaChange = { v, auto -> viewModel.onSeaChange(v, auto) },
+                    onRainChange = { v -> viewModel.onRainChange(v) },
+                    onInterferenceChange = { idx -> viewModel.onInterferenceChange(idx) },
+                    onPaletteChange = { viewModel.onPaletteChange(it) },
+                    onOrientationChange = { viewModel.onOrientationChange(it) },
+                    onDismiss = { viewModel.onDismissControlSheet() },
+                )
+            }
+        }
+
+        // Layer 6: Connection picker dialog (spec §2)
+        if (showConnectionPicker) {
+            ConnectionPickerDialog(
+                discoveredServers = emptyList(), // Phase 5: wire MdnsScanner
+                onConnect = { mode, _ ->
+                    // Phase 5: persist via ConnectionManager when remember=true
+                    viewModel.onDismissConnectionPicker()
+                },
+                onDismiss = { viewModel.onDismissConnectionPicker() },
+            )
         }
     }
 }

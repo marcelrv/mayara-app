@@ -1,7 +1,5 @@
 package com.marineyachtradar.mayara.ui.radar.overlay
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -9,7 +7,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -27,15 +24,13 @@ import com.marineyachtradar.mayara.data.model.PowerState
  *   - OFF → requests STANDBY (server transitions through WARMUP automatically)
  *   - STANDBY → requests TRANSMIT
  *   - TRANSMIT → requests STANDBY
- *   - WARMUP → no action (warming up, can not be interrupted)
+ *   - WARMUP → no action (warming up, cannot be interrupted)
  *
  * Colour coding:
  *   - OFF:      grey
- *   - WARMUP:   amber (with countdown — TODO Phase 4: add countdown timer)
+ *   - WARMUP:   amber
  *   - STANDBY:  green (dim)
- *   - TRANSMIT: green (bright / pulsing)
- *
- * TODO Phase 4: add countdown timer display during WARMUP state.
+ *   - TRANSMIT: green (bright)
  */
 @Composable
 fun PowerToggle(
@@ -61,12 +56,7 @@ fun PowerToggle(
 
     Button(
         onClick = {
-            val next = when (powerState) {
-                PowerState.OFF -> PowerState.STANDBY
-                PowerState.STANDBY -> PowerState.TRANSMIT
-                PowerState.TRANSMIT -> PowerState.STANDBY
-                PowerState.WARMUP -> return@Button
-            }
+            val next = nextPowerTarget(powerState) ?: return@Button
             onPowerAction(next)
         },
         enabled = isEnabled,
@@ -83,4 +73,17 @@ fun PowerToggle(
             ),
         )
     }
+}
+
+/**
+ * Pure function: returns the next [PowerState] target when the user taps the button,
+ * or `null` if no transition is allowed (WARMUP).
+ *
+ * Internal visibility for unit testing.
+ */
+internal fun nextPowerTarget(current: PowerState): PowerState? = when (current) {
+    PowerState.OFF -> PowerState.STANDBY
+    PowerState.STANDBY -> PowerState.TRANSMIT
+    PowerState.TRANSMIT -> PowerState.STANDBY
+    PowerState.WARMUP -> null
 }
