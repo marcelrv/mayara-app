@@ -1,5 +1,6 @@
 package com.marineyachtradar.mayara.ui.radar
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -8,10 +9,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +22,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.marineyachtradar.mayara.data.model.ColorPalette
@@ -28,6 +32,7 @@ import com.marineyachtradar.mayara.ui.radar.bottomsheet.RadarControlSheet
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
 import com.marineyachtradar.mayara.ui.radar.overlay.PowerToggle
 import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
+import com.marineyachtradar.mayara.ui.settings.SettingsActivity
 
 /**
  * Root composable for the radar display.
@@ -60,6 +65,9 @@ fun RadarScreen(
     val palette = (uiState as? RadarUiState.Connected)
         ?.controls?.palette ?: ColorPalette.GREEN
 
+    val navigationData = (uiState as? RadarUiState.Connected)?.navigationData
+    val context = LocalContext.current
+
     Box(modifier = Modifier.fillMaxSize()) {
 
         // Layer 0: OpenGL radar canvas (Phase 3)
@@ -70,15 +78,30 @@ fun RadarScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
+        // Layer 1: Settings gear icon + HUD (top-left, always visible)
+        Column(modifier = Modifier.align(Alignment.TopStart)) {
+            IconButton(
+                onClick = {
+                    context.startActivity(
+                        Intent(context, SettingsActivity::class.java)
+                    )
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            HudOverlay(
+                navigationData = navigationData,
+            )
+        }
+
         when (uiState) {
             is RadarUiState.Connected -> {
                 val connected = uiState as RadarUiState.Connected
 
-                // Layer 1: HUD (top-left)
-                HudOverlay(
-                    navigationData = connected.navigationData,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
 
                 // Layer 2: Power toggle (top-right)
                 PowerToggle(

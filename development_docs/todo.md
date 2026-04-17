@@ -104,15 +104,15 @@
 
 ---
 
-## Phase 5 — Settings Activity
+## Phase 5 — Settings Activity ✅ COMPLETE
 
-- [ ] Write `SettingsActivity.kt` with Compose Navigation host
-- [ ] Write `ConnectionSettingsScreen.kt`: status, Switch button, manual IP/port
-- [ ] Write `EmbeddedServerLogsScreen.kt`: polling `RadarJni.getLogs()` every 2 s
-- [ ] Write `UnitsScreen.kt`: distance (NM/KM/SM) and bearing (True/Magnetic) with DataStore
-- [ ] Write `AppInfoScreen.kt`: version, license, radar firmware (from capabilities)
-- [ ] Settings navigation unit tests
-- [ ] Hamburger/Gear icon in `RadarScreen` navigates to Settings correctly
+- [x] Write `SettingsActivity.kt` with Compose Navigation host
+- [x] Write `ConnectionSettingsScreen.kt`: status, Switch button, manual IP/port
+- [x] Write `EmbeddedServerLogsScreen.kt`: polling `RadarJni.getLogs()` every 2 s
+- [x] Write `UnitsScreen.kt`: distance (NM/KM/SM) and bearing (True/Magnetic) with DataStore
+- [x] Write `AppInfoScreen.kt`: version, license, radar firmware (from capabilities)
+- [x] Settings navigation unit tests
+- [x] Hamburger/Gear icon in `RadarScreen` navigates to Settings correctly
 
 ---
 

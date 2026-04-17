@@ -147,3 +147,16 @@ data class NavigationData(
     val sogKnots: Float?,
     val cogDeg: Float?,
 )
+
+/** Distance unit preference for range display (spec §3.5 — Units & Formats). */
+enum class DistanceUnit(val label: String) {
+    NM("NM"),
+    KM("km"),
+    SM("SM"),
+}
+
+/** Bearing reference type preference (spec §3.5 — Units & Formats). */
+enum class BearingMode(val label: String) {
+    TRUE("True"),
+    MAGNETIC("Magnetic"),
+}

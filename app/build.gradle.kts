@@ -47,6 +47,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Pre-built .so from mayara-jni (produced by scripts/build_jni.sh)
