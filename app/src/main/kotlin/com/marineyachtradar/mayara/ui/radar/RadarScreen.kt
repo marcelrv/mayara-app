@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
 import com.marineyachtradar.mayara.ui.radar.overlay.PowerToggle
@@ -43,11 +44,22 @@ fun RadarScreen(
     viewModel: RadarViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val latestSpoke by viewModel.spokeFlow.collectAsState()
+
+    val spokesPerRevolution = (uiState as? RadarUiState.Connected)
+        ?.capabilities?.spokesPerRevolution ?: 2048
+    val palette = (uiState as? RadarUiState.Connected)
+        ?.controls?.palette ?: ColorPalette.GREEN
 
     Box(modifier = Modifier.fillMaxSize()) {
 
-        // Layer 0: OpenGL radar canvas (TODO Phase 3)
-        // RadarGLView(modifier = Modifier.fillMaxSize())
+        // Layer 0: OpenGL radar canvas (Phase 3)
+        RadarGLView(
+            latestSpoke = latestSpoke,
+            spokesPerRevolution = spokesPerRevolution,
+            palette = palette,
+            modifier = Modifier.fillMaxSize(),
+        )
 
         when (uiState) {
             is RadarUiState.Connected -> {

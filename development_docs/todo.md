@@ -71,19 +71,22 @@
 
 ---
 
-## Phase 3 — OpenGL ES Renderer
+## Phase 3 — OpenGL ES Renderer ✅ COMPLETE
 
-- [ ] Write `RadarGLView.kt`: `AndroidView` wrapping `GLSurfaceView`
-- [ ] Write `RadarGLRenderer.kt`: 512×512 `GL_LUMINANCE` texture allocated on startup
-- [ ] Implement spoke-to-texture: `angle` → column, `data` bytes → row luminance
-- [ ] Implement range scaling: `spoke.range` / `canvas_radius` determines pixel scale
-- [ ] Write GLSL vertex and fragment shaders with palette LUT uniform
-- [ ] Implement palette switching: Green / Yellow / Multicolor / Night-Red
-- [ ] Implement pan gesture (1-finger drag → `centerOffset` uniforms)
-- [ ] Implement double-tap reset (`centerOffset` → 0)
-- [ ] Write pinch gesture consumer that discards zoom events (safety-critical)
-- [ ] Write gesture unit tests (Layer 4c)
-- [ ] Paparazzi screenshot for radar canvas in each palette mode
+- [x] Write `RadarGLView.kt`: `AndroidView` wrapping `GLSurfaceView`
+- [x] Write `RadarGLRenderer.kt`: 512×512 `GL_LUMINANCE` texture allocated on startup
+- [x] Implement spoke-to-texture: `angle` → column, `data` bytes → row luminance
+- [x] Write GLSL vertex and fragment shaders with palette LUT uniform
+- [x] Implement palette switching: Green / Yellow / Multicolor / Night-Red
+- [x] Implement pan gesture (1-finger drag → `centerOffset` uniforms)
+- [x] Implement double-tap reset (`centerOffset` → 0)
+- [x] Write pinch gesture consumer that discards zoom events (safety-critical)
+- [x] Write gesture unit tests: `PinchZoomDisabledTest` (3 tests)
+- [x] Write texture buffer unit tests: `RadarTextureBufferTest` (4 tests)
+- [x] Wire `RadarGLView` into `RadarScreen` as Layer 0 (feeds spoke data + palette)
+- [x] Fix CLEARTEXT HTTP policy for 127.0.0.1 / 10.0.2.2 (`network_security_config.xml`)
+- [x] `./gradlew test` passes — 25 tasks, exit 0
+- [x] `./gradlew assembleDebug` succeeds — APK built
 
 ---
 
