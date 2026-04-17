@@ -16,8 +16,14 @@ import kotlinx.coroutines.flow.StateFlow
  * Creates its own [RadarRepository] using [viewModelScope] so all coroutines are
  * cancelled automatically when the ViewModel is cleared.
  *
- * The embedded server is expected to run on 127.0.0.1:6502 (started by the JNI layer).
- * Network mode will be selectable from Settings in a future phase.
+ * **Connection modes:**
+ * - **Embedded (default)**: The JNI Rust server runs on 127.0.0.1:6502 inside the Android app itself.
+ *   This requires Phase 1 (JNI) to be complete and the .so library to load successfully.
+ * - **Network (Phase 5)**: User selects a remote mayara-server URL from Settings.
+ *
+ * **NOTE (Phase 3):** At this stage, the embedded server may not be running yet (Phase 1 JNI
+ * integration still in progress). The app will show "Connecting to radar…" and fail with a
+ * connection error if the server is unreachable. This is expected until Phase 1 is complete.
  */
 class RadarViewModel : ViewModel() {
 
@@ -35,6 +41,10 @@ class RadarViewModel : ViewModel() {
     val spokeFlow = repository.spokeFlow
 
     init {
+        // Attempt to connect to the embedded JNI server.
+        // If the JNI layer hasn't started the server yet, this will fail with a connection error,
+        // which [RadarRepository] will surface in [uiState] as [RadarUiState.Error].
+        // This is expected until Phase 1 (JNI integration) is fully verified.
         repository.connect(EMBEDDED_BASE_URL)
     }
 
@@ -64,7 +74,18 @@ class RadarViewModel : ViewModel() {
     }
 
     companion object {
-        /** Embedded JNI server always binds on this address (see mayara-jni/src/lib.rs). */
+        /**
+         * Embedded JNI server address.
+         *
+         * The Rust server (mayara-jni) runs inside the Android process and listens on
+         * 127.0.0.1:6502 (process-local loopback).
+         *
+         * **On physical device:** 127.0.0.1 = the device itself (not the dev machine).
+         * **On emulator:** 10.0.2.2 can be used instead to reach the host machine (not applicable here).
+         *
+         * This URL is hardcoded for embedded mode. Phase 5 (Settings) will allow users to
+         * switch to a remote server URL.
+         */
         const val EMBEDDED_BASE_URL = "http://127.0.0.1:6502"
     }
 }

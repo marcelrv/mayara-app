@@ -32,66 +32,58 @@ jobs:
         with:
           targets: aarch64-linux-android
 
+      - name: Cache cargo and cargo-ndk
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-ndk
+            ~/.cargo/registry
+            ~/.cargo/git
+            mayara-jni/target
+            mayara-server/target
+          key: ${{ runner.os }}-cargo-jni-${{ hashFiles('mayara-jni/Cargo.lock', 'mayara-server/Cargo.lock') }}
+
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+        run: |
+          if ! command -v cargo-ndk &> /dev/null; then
+            echo "Installing cargo-ndk..."
+            cargo install cargo-ndk --locked
+          else
+            cargo-ndk --version
+          fi
 
       - name: Set up Android NDK
-        run: |
-          echo "Setting up Android NDK..."
-          mkdir -p ~/android-ndk
-          cd ~/android-ndk
-          
-          # Download NDK from official Google source
-          NDK_VERSION="r26.1.10909125"
-          NDK_URL="https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux-x86_64.zip"
-          NDK_ZIP="android-ndk-${NDK_VERSION}-linux-x86_64.zip"
-          
-          if [ ! -f "$NDK_ZIP" ]; then
-            echo "Downloading NDK..."
-            wget -q "$NDK_URL" -O "$NDK_ZIP" || curl -L -o "$NDK_ZIP" "$NDK_URL"
-          fi
-          
-          echo "Extracting NDK..."
-          unzip -q "$NDK_ZIP"
-          
-          NDK_PATH="$(pwd)/android-ndk-${NDK_VERSION}"
-          echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
-          echo "NDK installed at ${NDK_PATH}"
-          ls -la "${NDK_PATH}/" || echo "Failed to extract NDK"
+        uses: nttld/setup-ndk@v1
+        with:
+          ndk-version: r26b
 
-      - name: Verify Rust and cargo-ndk
+      - name: Verify build environment
         run: |
-          echo "==> Rust version:"
-          rustc --version && cargo --version
-          echo "==> cargo-ndk location:"
-          which cargo-ndk || echo "WARNING: cargo-ndk not in PATH"
-          echo "==> Android NDK:"
-          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
-          if [ -d "$ANDROID_NDK_HOME" ]; then
-            echo "✓ NDK directory exists"
-            ls -la "$ANDROID_NDK_HOME/" | head -10
-          else
-            echo "✗ NDK directory NOT FOUND"
-            exit 1
-          fi
-          echo "==> Rust targets:"
+          echo "=== Rust toolchain ==="
+          rustc --version
+          cargo --version
           rustup target list | grep aarch64-linux-android
-
-      - name: Verify submodule
-        run: |
-          echo "==> Submodule status:"
+          
+          echo ""
+          echo "=== Build tools ==="
+          cargo-ndk --version
+          
+          echo ""
+          echo "=== Android NDK ==="
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_HOME"
+          test -d "$ANDROID_NDK_HOME" || (echo "ERROR: NDK not found" && exit 1)
+          
+          echo ""
+          echo "=== Git submodule ==="
           git submodule status
-          echo "==> mayara-server contents:"
-          ls -la mayara-server/ | head -10
+          test -d "mayara-server/src" || (echo "ERROR: mayara-server not initialized" && exit 1)
 
       - name: Build JNI library (ARM64)
         run: |
-          set -x  # Enable debug output
           bash scripts/build_jni.sh
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-          RUST_BACKTRACE: 1
-          CARGO_VERBOSE: true
+          RUST_BACKTRACE: full
 
       - name: Verify artifact
         run: |
@@ -110,14 +102,15 @@ jobs:
           name: libradar-so
           path: app/src/main/jniLibs/arm64-v8a/libradar.so
           retention-days: 90
+          if-no-files-found: error
 
-      - name: Commit and push libradar.so
+      - name: Commit and push libradar.so (main branch only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add app/src/main/jniLibs/arm64-v8a/libradar.so
-          git commit -m "build: libradar.so from GitHub Actions" || echo "No changes to commit"
-          git push
+          git diff --cached --exit-code || git commit -m "build: libradar.so from GitHub Actions"
+          git push || echo "Nothing to push"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
