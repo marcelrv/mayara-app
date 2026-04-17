@@ -61,6 +61,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 // Wire protobuf codegen — reads .proto from the mayara-server submodule.
@@ -134,6 +138,10 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.ext.junit)
+
+    // Robolectric smoke test (runs on JVM, no emulator needed)
+    testImplementation(libs.robolectric)
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.12.1")
 }
 
 tasks.withType<Test>().configureEach {
