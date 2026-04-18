@@ -79,12 +79,7 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
 
             // Check for a remembered connection; auto-connect if found.
             val remembered = try { connectionManager.rememberedMode.first() } catch (_: Throwable) { null }
-            if (remembered != null) {
-                connectWithMode(remembered)
-            } else {
-                // No remembered choice → show the picker.
-                _showConnectionPicker.value = true
-            }
+            connectWithMode(ConnectionMode.Network("http://192.168.3.10:6502"))
         }
     }
 

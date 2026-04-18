@@ -46,9 +46,11 @@ object CapabilitiesMapper {
         val controls = mutableMapOf<String, ControlDefinition>()
         val controlsObj = json.optJSONObject("controls") ?: JSONObject()
         controlsObj.keys().forEach { key ->
-            val c = controlsObj.getJSONObject(key)
-            val def = parseControlDefinition(c)
-            controls[key] = def
+            val c = controlsObj.optJSONObject(key)
+            if (c != null) {
+                val def = parseControlDefinition(c)
+                controls[key] = def
+            }
         }
 
         return RadarCapabilities(

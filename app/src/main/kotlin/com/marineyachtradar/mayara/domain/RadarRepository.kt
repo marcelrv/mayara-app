@@ -78,15 +78,18 @@ class RadarRepository(
         _uiState.value = RadarUiState.Loading
         scope.launch {
             try {
-                // 1. Discover radars — use the first one
+                android.util.Log.i("RadarRepository", "Discovering radars at $baseUrl...")
                 val radars = apiClient.getRadars()
+                android.util.Log.i("RadarRepository", "Found radars: $radars")
                 if (radars.isEmpty()) {
+                    android.util.Log.e("RadarRepository", "No radars found at $baseUrl")
                     _uiState.value = RadarUiState.Error("No radars found at $baseUrl")
                     return@launch
                 }
                 val radar = radars.first()
                 currentRadarId = radar.id
 
+                android.util.Log.i("RadarRepository", "Fetching capabilities/controls for ${radar.id}")
                 // 2. Fetch capabilities and current control values
                 val capabilities = apiClient.getCapabilities(radar.id)
                 val controlValues = apiClient.getControls(radar.id)
@@ -119,6 +122,7 @@ class RadarRepository(
                 launchControlStream(radar.id, streamUrl)
 
             } catch (e: Exception) {
+                android.util.Log.e("RadarRepository", "Connection failed", e)
                 _uiState.value = RadarUiState.Error(e.message ?: "Connection failed")
             }
         }
