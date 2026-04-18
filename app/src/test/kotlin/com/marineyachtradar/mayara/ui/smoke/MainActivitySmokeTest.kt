@@ -1,6 +1,8 @@
 package com.marineyachtradar.mayara.ui.smoke
 
+import android.content.pm.ActivityInfo
 import com.marineyachtradar.mayara.MainActivity
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +28,20 @@ class MainActivitySmokeTest {
             .setup()          // create → start → resume
         val activity = controller.get()
         assertNotNull("MainActivity must launch without crashing", activity)
+        controller.destroy()
+    }
+
+    @Test
+    fun activityIsNotLockedToLandscape() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val activity = controller.get()
+        // SCREEN_ORIENTATION_LANDSCAPE = 0, SCREEN_ORIENTATION_UNSPECIFIED = -1
+        // We verify the manifest no longer forces landscape-only orientation.
+        assertNotEquals(
+            "MainActivity must not be locked to landscape",
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            activity.requestedOrientation,
+        )
         controller.destroy()
     }
 }
