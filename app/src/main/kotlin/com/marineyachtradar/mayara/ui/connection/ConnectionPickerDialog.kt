@@ -63,14 +63,16 @@ import com.marineyachtradar.mayara.data.model.DiscoveredServer
 @Composable
 fun ConnectionPickerDialog(
     discoveredServers: List<DiscoveredServer>,
+    initialHost: String = "",
+    initialPort: String = "6502",
     onConnect: (mode: ConnectionMode, remember: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var selectedOption by rememberSaveable { mutableStateOf(PickerOption.EMBEDDED) }
     var rememberChoice by rememberSaveable { mutableStateOf(false) }
     var selectedServerIndex by rememberSaveable { mutableIntStateOf(0) }
-    var manualHost by rememberSaveable { mutableStateOf("") }
-    var manualPort by rememberSaveable { mutableStateOf("6502") }
+    var manualHost by rememberSaveable(initialHost) { mutableStateOf(initialHost.ifEmpty { "" }) }
+    var manualPort by rememberSaveable(initialPort) { mutableStateOf(initialPort.ifEmpty { "6502" }) }
     var pcapFilePath by rememberSaveable { mutableStateOf("") }
     var pcapFileName by rememberSaveable { mutableStateOf("") }
 

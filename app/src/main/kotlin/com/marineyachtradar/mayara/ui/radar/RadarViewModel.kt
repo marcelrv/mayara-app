@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 private const val TAG = "RadarViewModel"
@@ -66,6 +68,14 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     /** Controls visibility of the connection picker dialog. */
     private val _showConnectionPicker = MutableStateFlow(false)
     val showConnectionPicker: StateFlow<Boolean> = _showConnectionPicker.asStateFlow()
+    
+    val lastNetworkHost: StateFlow<String> = connectionManager.lastNetworkHost
+        .map { it ?: "" }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "")
+
+    val lastNetworkPort: StateFlow<String> = connectionManager.lastNetworkPort
+        .map { it ?: "6502" }
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "6502")
 
     init {
         viewModelScope.launch {
@@ -79,7 +89,32 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
 
             // Check for a remembered connection; auto-connect if found.
             val remembered = try { connectionManager.rememberedMode.first() } catch (_: Throwable) { null }
-            connectWithMode(ConnectionMode.Network("http://192.168.3.10:6502"))
+            if (remembered != null) {
+                connectWithMode(remembered)
+            } else {
+                _showConnectionPicker.value = true
+            }
+
+            // Watch for "Switch Connection" clearing the remembered mode.
+            connectionManager.rememberedMode.collect { mode ->
+                if (mode == null) {
+                    _showConnectionPicker.value = true
+                    repository.disconnect()
+                }
+            }
+        }
+        
+        // Also watch for explicit disconnect events
+        viewModelScope.launch {
+            var isFirst = true
+            connectionManager.forceDisconnectEvent.collect { timestamp ->
+                if (isFirst) {
+                    isFirst = false
+                    return@collect
+                }
+                _showConnectionPicker.value = true
+                repository.disconnect()
+            }
         }
     }
 
@@ -91,6 +126,14 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun onConnect(mode: ConnectionMode, remember: Boolean) {
         _showConnectionPicker.value = false
+        
+        if (mode is ConnectionMode.Network) {
+            viewModelScope.launch {
+                val uri = java.net.URI(mode.baseUrl)
+                try { connectionManager.saveLastNetworkLocation(uri.host ?: "", (uri.port.takeIf { it > 0 } ?: 6502).toString()) } catch (_: Throwable) {}
+            }
+        }
+
         if (remember) {
             viewModelScope.launch {
                 try { connectionManager.rememberMode(mode) } catch (_: Throwable) { /* ignore */ }

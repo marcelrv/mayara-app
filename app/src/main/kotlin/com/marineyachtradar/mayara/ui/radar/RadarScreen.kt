@@ -181,8 +181,13 @@ fun RadarScreen(
 
         // Layer 6: Connection picker dialog (spec §2)
         if (showConnectionPicker) {
+            val lastHost by viewModel.lastNetworkHost.collectAsState()
+            val lastPort by viewModel.lastNetworkPort.collectAsState()
+            
             ConnectionPickerDialog(
                 discoveredServers = emptyList(), // Phase 5: wire MdnsScanner
+                initialHost = lastHost,
+                initialPort = lastPort,
                 onConnect = { mode, remember ->
                     viewModel.onConnect(mode, remember)
                 },

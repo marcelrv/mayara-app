@@ -13,8 +13,10 @@ import com.marineyachtradar.mayara.data.model.RadarOrientation
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.data.model.SliderControlState
 import com.marineyachtradar.mayara.data.model.SpokeData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -57,6 +59,8 @@ class RadarRepository(
     private val _spokeFlow = MutableStateFlow<SpokeData?>(null)
     val spokeFlow: StateFlow<SpokeData?> = _spokeFlow.asStateFlow()
 
+    private var connectJob: Job? = null
+    private var retryJob: Job? = null
     private var activeStreamJob: Job? = null
     private var activeSpokeJob: Job? = null
     private var currentRadarId: String? = null
@@ -76,16 +80,19 @@ class RadarRepository(
         apiClient.baseUrl = baseUrl
         disconnect()
         _uiState.value = RadarUiState.Loading
-        scope.launch {
+        connectJob = scope.launch {
             try {
                 android.util.Log.i("RadarRepository", "Discovering radars at $baseUrl...")
                 val radars = apiClient.getRadars()
-                android.util.Log.i("RadarRepository", "Found radars: $radars")
                 if (radars.isEmpty()) {
-                    android.util.Log.e("RadarRepository", "No radars found at $baseUrl")
-                    _uiState.value = RadarUiState.Error("No radars found at $baseUrl")
+                    android.util.Log.i("RadarRepository", "No radars found yet at $baseUrl, retrying in 3s...")
+                    retryJob = scope.launch {
+                        delay(3_000)
+                        connect(baseUrl)
+                    }
                     return@launch
                 }
+                android.util.Log.i("RadarRepository", "Found radars: $radars")
                 val radar = radars.first()
                 currentRadarId = radar.id
 
@@ -121,6 +128,8 @@ class RadarRepository(
                     .replace("https://", "wss://") + "/signalk/v1/stream"
                 launchControlStream(radar.id, streamUrl)
 
+            } catch (e: CancellationException) {
+                throw e  // Always propagate cancellation
             } catch (e: Exception) {
                 android.util.Log.e("RadarRepository", "Connection failed", e)
                 _uiState.value = RadarUiState.Error(e.message ?: "Connection failed")
@@ -130,8 +139,12 @@ class RadarRepository(
 
     /** Disconnect all active WebSockets and reset state to [RadarUiState.Loading]. */
     fun disconnect() {
+        connectJob?.cancel()
+        retryJob?.cancel()
         activeStreamJob?.cancel()
         activeSpokeJob?.cancel()
+        connectJob = null
+        retryJob = null
         activeStreamJob = null
         activeSpokeJob = null
         currentRadarId = null

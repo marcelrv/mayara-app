@@ -134,16 +134,15 @@ class RadarRepositoryTest {
     }
 
     @Test
-    fun `connect sets Error when no radars returned`() = runTest {
+    fun `connect stays Loading while polling when no radars returned yet`() = runTest {
         coEvery { apiClient.getRadars() } returns emptyList()
         buildRepository()
 
         repository.uiState.test {
-            awaitItem()
+            awaitItem() // initial Loading
             repository.connect("http://127.0.0.1:6502")
-            // StateFlow deduplicates Loading→Loading; Error is the next distinct item
-            val state = awaitItem()
-            assertInstanceOf(RadarUiState.Error::class.java, state)
+            // Should remain in Loading (polling) rather than transitioning to Error
+            expectNoEvents()
             cancelAndIgnoreRemainingEvents()
         }
     }

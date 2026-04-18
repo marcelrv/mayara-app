@@ -133,6 +133,23 @@
 
 ---
 
+## Bugfixes
+
+See `development_docs/bugfix_spec.md` for root-cause analysis, fix specifications, and test plans.
+
+- [ ] **BF-01** Range display does not update when the server reports a range change via the SignalK control stream
+- [ ] **BF-02** No range rings are drawn on the radar display
+- [ ] **BF-03** Range label uses a single decimal (e.g. `1.5 NM`) instead of marine fraction notation (e.g. `1/8 NM`) for short ranges; unit preference (NM/KM/SM) is ignored
+- [ ] **BF-04** No connection-type indicator on main screen (embedded vs. network, server address)
+- [ ] **BF-05** Radar name is not displayed on main screen; multi-radar switching UI is missing
+- [ ] **BF-06** UI controls are partially hidden behind Android system bars because window inset padding is not applied to overlay composables
+- [ ] **BF-07** Power state always shows `OFF` on initial connect regardless of actual radar state (defaults to 0 when `power` control value is absent or unparseable)
+- [ ] **BF-08** On orientation change (landscape ↔ portrait) the radar circle is over-sized or distorted because the `u_Resolution` uniform is not updated when the viewport dimensions change
+- [ ] **BF-09** Radar spoke image is inverted and rotated 180°: fragment shader `v`-coordinate flip maps screen centre to max-range data, and the `+0.5` angle offset rotates the image 180°
+- [ ] **BF-10** Embedded server log screen shows only JNI lifecycle messages; mayara-server internal log output is not routed to the in-app log buffer
+- [ ] **BF-11** Radar texture is never cleared: stale spokes persist indefinitely, making the display appear frozen when transmission stops
+- [ ] **BF-12** mDNS network scanner (`MdnsScanner`) is implemented but not wired to the connection picker dialog
+
 ## Backlog (Post-MVP)
 
 - [ ] ARPA target tracking overlay

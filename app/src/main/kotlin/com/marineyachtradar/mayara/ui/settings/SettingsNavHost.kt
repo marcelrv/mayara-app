@@ -76,7 +76,10 @@ fun SettingsNavHost(
         composable(SettingsScreen.ConnectionSettings.route) {
             ConnectionSettingsScreen(
                 uiState = connectionState,
-                onSwitchConnection = { viewModel.onSwitchConnection() },
+                onSwitchConnection = { 
+                    viewModel.onSwitchConnection() 
+                    onFinish()
+                },
                 onSaveManualConnection = { host, port ->
                     viewModel.onSaveManualConnection(host, port)
                 },

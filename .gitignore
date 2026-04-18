@@ -29,3 +29,4 @@ Thumbs.db
 
 # Wire generated sources (regenerated on every build)
 app/build/generated/source/wire/
+development_docs/radar*.pcap
