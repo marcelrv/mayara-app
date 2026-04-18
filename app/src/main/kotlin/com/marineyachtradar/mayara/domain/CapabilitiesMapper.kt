@@ -5,7 +5,9 @@ import com.marineyachtradar.mayara.data.model.ControlDefinition
 import com.marineyachtradar.mayara.data.model.ControlType
 import com.marineyachtradar.mayara.data.model.ControlsState
 import com.marineyachtradar.mayara.data.model.EnumControlState
+import com.marineyachtradar.mayara.data.model.LegendPixel
 import com.marineyachtradar.mayara.data.model.RadarCapabilities
+import com.marineyachtradar.mayara.data.model.RadarLegend
 import com.marineyachtradar.mayara.data.model.RadarOrientation
 import com.marineyachtradar.mayara.data.model.SliderControlState
 import org.json.JSONObject
@@ -59,6 +61,43 @@ object CapabilitiesMapper {
             spokesPerRevolution = spokesPerRevolution,
             maxSpokeLength = maxSpokeLength,
             controls = controls,
+            legend = parseLegend(json.optJSONObject("legend")),
+        )
+    }
+
+    /**
+     * Parse the `legend` object from the capabilities response.
+     *
+     * JSON shape:
+     * ```json
+     * {
+     *   "pixels": [{ "type": "Normal", "color": "#00000000" }, ...],
+     *   "pixelColors": 222,
+     *   "lowReturn": 1,
+     *   "mediumReturn": 74,
+     *   "strongReturn": 148
+     * }
+     * ```
+     */
+    private fun parseLegend(json: JSONObject?): RadarLegend? {
+        json ?: return null
+        val pixelsArr = json.optJSONArray("pixels") ?: return null
+        if (pixelsArr.length() == 0) return null
+
+        val pixels = (0 until pixelsArr.length()).map { i ->
+            val pObj = pixelsArr.getJSONObject(i)
+            LegendPixel(
+                color = pObj.optString("color", "#ff0000ff"),
+                type = pObj.optString("type", "Normal"),
+            )
+        }
+
+        return RadarLegend(
+            pixels = pixels,
+            pixelColors = json.optInt("pixelColors", pixels.size),
+            lowReturn = json.optInt("lowReturn", 1),
+            mediumReturn = json.optInt("mediumReturn", pixels.size / 3),
+            strongReturn = json.optInt("strongReturn", pixels.size * 2 / 3),
         )
     }
 

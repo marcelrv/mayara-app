@@ -88,6 +88,53 @@ class CapabilitiesMapperTest {
         val caps = CapabilitiesMapper.parseCapabilities("r1", json)
 
         assertTrue(caps.controls.isEmpty())
+        assertNull(caps.legend)
+    }
+
+    // ------------------------------------------------------------------
+    // legend parsing
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `parseCapabilities parses legend with pixel colours`() {
+        val json = JSONObject(
+            """
+            {
+              "supportedRanges": [300],
+              "spokesPerRevolution": 2048,
+              "maxSpokeLength": 256,
+              "controls": {},
+              "legend": {
+                "pixelColors": 3,
+                "lowReturn": 1,
+                "mediumReturn": 2,
+                "strongReturn": 3,
+                "pixels": [
+                  { "type": "Normal", "color": "#00000000" },
+                  { "type": "Normal", "color": "#0000ffff" },
+                  { "type": "Normal", "color": "#00ff00ff" },
+                  { "type": "Normal", "color": "#ff0000ff" }
+                ]
+              }
+            }
+            """.trimIndent()
+        )
+
+        val caps = CapabilitiesMapper.parseCapabilities("r1", json)
+
+        assertNotNull(caps.legend)
+        assertEquals(4, caps.legend!!.pixels.size)
+        assertEquals("#00000000", caps.legend!!.pixels[0].color)
+        assertEquals("#ff0000ff", caps.legend!!.pixels[3].color)
+        assertEquals(3, caps.legend!!.pixelColors)
+        assertEquals(1, caps.legend!!.lowReturn)
+    }
+
+    @Test
+    fun `parseCapabilities returns null legend when legend object is absent`() {
+        val json = capabilitiesJson(controls = "")
+        val caps = CapabilitiesMapper.parseCapabilities("r1", json)
+        assertNull(caps.legend)
     }
 
     // ------------------------------------------------------------------

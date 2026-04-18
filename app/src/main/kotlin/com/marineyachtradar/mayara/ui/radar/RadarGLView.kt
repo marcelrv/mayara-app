@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.PowerState
+import com.marineyachtradar.mayara.data.model.RadarLegend
 import com.marineyachtradar.mayara.data.model.SpokeData
 
 /**
@@ -35,6 +36,7 @@ fun RadarGLView(
     latestSpoke: SpokeData?,
     spokesPerRevolution: Int,
     palette: ColorPalette,
+    legend: RadarLegend? = null,
     powerState: PowerState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -45,6 +47,11 @@ fun RadarGLView(
         if (powerState != null && powerState != PowerState.TRANSMIT) {
             renderer.clearAll()
         }
+    }
+
+    // Apply legend palette when it becomes available from the server
+    LaunchedEffect(legend) {
+        renderer.setLegendPalette(legend)
     }
 
     AndroidView(

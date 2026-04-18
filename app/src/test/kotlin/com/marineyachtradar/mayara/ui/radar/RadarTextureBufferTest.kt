@@ -1,5 +1,8 @@
 package com.marineyachtradar.mayara.ui.radar
 
+import com.marineyachtradar.mayara.data.model.ColorPalette
+import com.marineyachtradar.mayara.data.model.LegendPixel
+import com.marineyachtradar.mayara.data.model.RadarLegend
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -93,5 +96,57 @@ class RadarTextureBufferTest {
         synchronized(renderer2) {
             renderer2.writeColumn(0, longSpoke) // must not throw
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Legend-based palette
+    // -----------------------------------------------------------------------
+
+    @Test
+    fun `buildLegendLut maps hex colours to RGBA bytes`() {
+        val legend = RadarLegend(
+            pixels = listOf(
+                LegendPixel(color = "#00000000", type = "Normal"),   // index 0: transparent
+                LegendPixel(color = "#0000ffff", type = "Normal"),   // index 1: blue, opaque
+                LegendPixel(color = "#ff000080", type = "Normal"),   // index 2: red, half-alpha
+            ),
+            pixelColors = 2,
+            lowReturn = 1,
+            mediumReturn = 1,
+            strongReturn = 2,
+        )
+
+        val lut = renderer.buildLegendLut(legend)
+
+        // Index 0: transparent
+        assertEquals(0.toByte(), lut[0])  // R
+        assertEquals(0.toByte(), lut[1])  // G
+        assertEquals(0.toByte(), lut[2])  // B
+        assertEquals(0.toByte(), lut[3])  // A
+
+        // Index 1: blue, fully opaque
+        assertEquals(0x00.toByte(), lut[4])  // R
+        assertEquals(0x00.toByte(), lut[5])  // G
+        assertEquals(0xFF.toByte(), lut[6])  // B
+        assertEquals(0xFF.toByte(), lut[7])  // A
+
+        // Index 2: red, half-alpha
+        assertEquals(0xFF.toByte(), lut[8])   // R
+        assertEquals(0x00.toByte(), lut[9])   // G
+        assertEquals(0x00.toByte(), lut[10])  // B
+        assertEquals(0x80.toByte(), lut[11])  // A
+
+        // Index 3+: should be all zeros (transparent)
+        assertEquals(0.toByte(), lut[12])
+        assertEquals(0.toByte(), lut[15])
+    }
+
+    @Test
+    fun `buildPaletteLut index 0 is transparent`() {
+        val lut = renderer.buildPaletteLut(ColorPalette.GREEN)
+        // Index 0 alpha should be 0 (transparent for no-return)
+        assertEquals(0.toByte(), lut[3])
+        // Index 1 should be opaque
+        assertEquals(0xFF.toByte(), lut[7])
     }
 }

@@ -3,7 +3,9 @@ package com.marineyachtradar.mayara.ui.radar.overlay
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -38,12 +40,20 @@ fun HudOverlay(
             )
         }
         if (radarName.isNotBlank()) {
-            Text(
-                text = radarName,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable { onRadarNameTapped() },
-            )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .clickable { onRadarNameTapped() },
+            ) {
+                Text(
+                    text = radarName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                )
+            }
         }
         navigationData?.headingDeg?.let { heading ->
             HudRow(label = "HDG", value = "%.1f°".format(heading))

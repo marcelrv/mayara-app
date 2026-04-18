@@ -137,18 +137,35 @@
 
 See `development_docs/bugfix_spec.md` for root-cause analysis, fix specifications, and test plans.
 
-- [ ] **BF-01** Range display does not update when the server reports a range change via the SignalK control stream
-- [ ] **BF-02** No range rings are drawn on the radar display
-- [ ] **BF-03** Range label uses a single decimal (e.g. `1.5 NM`) instead of marine fraction notation (e.g. `1/8 NM`) for short ranges; unit preference (NM/KM/SM) is ignored
-- [ ] **BF-04** No connection-type indicator on main screen (embedded vs. network, server address)
-- [ ] **BF-05** Radar name is not displayed on main screen; multi-radar switching UI is missing
-- [ ] **BF-06** UI controls are partially hidden behind Android system bars because window inset padding is not applied to overlay composables
-- [ ] **BF-07** Power state always shows `OFF` on initial connect regardless of actual radar state (defaults to 0 when `power` control value is absent or unparseable)
-- [ ] **BF-08** On orientation change (landscape ↔ portrait) the radar circle is over-sized or distorted because the `u_Resolution` uniform is not updated when the viewport dimensions change
-- [ ] **BF-09** Radar spoke image is inverted and rotated 180°: fragment shader `v`-coordinate flip maps screen centre to max-range data, and the `+0.5` angle offset rotates the image 180°
-- [ ] **BF-10** Embedded server log screen shows only JNI lifecycle messages; mayara-server internal log output is not routed to the in-app log buffer
-- [ ] **BF-11** Radar texture is never cleared: stale spokes persist indefinitely, making the display appear frozen when transmission stops
-- [ ] **BF-12** mDNS network scanner (`MdnsScanner`) is implemented but not wired to the connection picker dialog
+- [x] **BF-01** Range display does not update when the server reports a range change via the SignalK control stream
+- [x] **BF-02** No range rings are drawn on the radar display
+- [x] **BF-03** Range label uses a single decimal (e.g. `1.5 NM`) instead of marine fraction notation (e.g. `1/8 NM`) for short ranges; unit preference (NM/KM/SM) is ignored
+- [x] **BF-04** No connection-type indicator on main screen (embedded vs. network, server address)
+- [x] **BF-05** Radar name is not displayed on main screen; multi-radar switching UI is missing
+- [x] **BF-06** UI controls are partially hidden behind Android system bars because window inset padding is not applied to overlay composables
+- [x] **BF-07** Power state always shows `OFF` on initial connect regardless of actual radar state (defaults to 0 when `power` control value is absent or unparseable)
+- [x] **BF-08** On orientation change (landscape ↔ portrait) the radar circle is over-sized or distorted because the `u_Resolution` uniform is not updated when the viewport dimensions change
+- [x] **BF-09** Radar spoke image is inverted and rotated 180°: fragment shader `v`-coordinate flip maps screen centre to max-range data, and the `+0.5` angle offset rotates the image 180°
+- [x] **BF-10** Embedded server log screen shows only JNI lifecycle messages; mayara-server internal log output is not routed to the in-app log buffer
+- [x] **BF-11** Radar texture is never cleared: stale spokes persist indefinitely, making the display appear frozen when transmission stops
+- [x] **BF-12** mDNS network scanner (`MdnsScanner`) is implemented but not wired to the connection picker dialog
+
+
+
+Improvements
+- [x] in portrait scale down so the whole circle is visible
+- [x] add units at the range circles
+- [ ] the range plus/minus needs to jump only through the units that are based on the selected unit of measure, so in the KM, it goes through the km ranges, in NM it goes through the NM ranges
+- [x] the name of the radar can be in a pill
+- [x] add lines for the compas and indicate the direction similar to the range units
+- [ ] in portrait mode, if the size is wide enough put the visual controls (gain sea clutter etc) on the right side of the screen, moving the radar to the left instead of having the visual controls overlapping the radar
+- [x] change  licnence to  GPL-2 add licencetext in the root folder
+- [x] use server-provided colour legend for accurate radar spoke colours (was hardcoded green)
+- [x] transparent background for no-return areas (legend index 0)
+ 
+
+
+
 
 ## Backlog (Post-MVP)
 

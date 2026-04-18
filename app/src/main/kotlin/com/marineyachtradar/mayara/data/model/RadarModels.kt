@@ -47,6 +47,32 @@ data class RadarCapabilities(
     val spokesPerRevolution: Int,
     val maxSpokeLength: Int,
     val controls: Map<String, ControlDefinition>,
+    /** Server-provided colour legend for mapping spoke byte indices to RGBA. */
+    val legend: RadarLegend? = null,
+)
+
+/**
+ * Server-provided colour legend for the radar display.
+ *
+ * Each spoke byte is an index into [pixels]. Index 0 is always transparent (no return).
+ * The server generates a blue→green→red gradient for normal returns, plus special
+ * entries for Doppler/history if supported by the hardware.
+ */
+data class RadarLegend(
+    /** Indexed colour table: spoke byte value → RGBA colour. */
+    val pixels: List<LegendPixel>,
+    /** Number of "normal intensity" colour entries (excludes special entries). */
+    val pixelColors: Int,
+    val lowReturn: Int,
+    val mediumReturn: Int,
+    val strongReturn: Int,
+)
+
+data class LegendPixel(
+    /** CSS-style hex colour string, e.g. "#ff0000ff". */
+    val color: String,
+    /** Pixel type: "Normal", "DopplerApproaching", "DopplerReceding", "History", etc. */
+    val type: String,
 )
 
 data class ControlDefinition(

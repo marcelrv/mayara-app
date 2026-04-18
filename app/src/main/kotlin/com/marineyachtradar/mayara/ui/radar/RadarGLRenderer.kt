@@ -4,6 +4,7 @@ import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.util.Log
 import com.marineyachtradar.mayara.data.model.ColorPalette
+import com.marineyachtradar.mayara.data.model.RadarLegend
 import com.marineyachtradar.mayara.data.model.SpokeData
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -64,6 +65,7 @@ uniform sampler2D u_Palette;
 uniform vec2 u_Center;       // pan offset in [−0.5..0.5] normalized units
 uniform vec2 u_Resolution;   // viewport size in pixels
 uniform vec4 u_RingColor;    // range ring colour (palette-aware)
+uniform float u_Scale;       // scale factor for portrait mode (≥1.0)
 
 const float PI = 3.14159265;
 const vec4 BACKGROUND = vec4(0.043, 0.047, 0.063, 1.0); // #0B0C10
@@ -78,7 +80,8 @@ void main() {
     vec2 uv = gl_FragCoord.xy / u_Resolution - 0.5;
     // Correct for aspect ratio so the radar circle isn't stretched.
     float aspect = u_Resolution.x / u_Resolution.y;
-    vec2 radarPos = vec2(uv.x * aspect, uv.y) - u_Center;
+    // In portrait, scale both axes up so the circle fills the width.
+    vec2 radarPos = vec2(uv.x * aspect, uv.y) * u_Scale - u_Center;
 
     float dist = length(radarPos);
     // Discard fragments outside the radar circle (radius = 0.5 in corrected space).
@@ -99,7 +102,6 @@ void main() {
     }
 
     // v = 0 at screen centre (near range), 1 at screen edge (far range).
-    // Row 0 in texture = near range = GL t=0 (bottom of texture).
     float v = dist / 0.5;
 
     // atan(x, y): angle measured clockwise from North (y-up), result in [-PI..PI].
@@ -107,8 +109,14 @@ void main() {
     // Map angle to [0..1], starting at North.
     float u = fract(angle / (2.0 * PI));
 
+    // Sample radar texture → legend index (stored in luminance channel).
     float intensity = texture2D(u_Radar, vec2(u, v)).r;
-    gl_FragColor = texture2D(u_Palette, vec2(intensity, 0.5));
+
+    // Look up colour from the palette LUT.
+    vec4 color = texture2D(u_Palette, vec2(intensity, 0.5));
+
+    // Blend: if legend alpha is ~0 (index 0 = no return), show background.
+    gl_FragColor = mix(BACKGROUND, color, color.a);
 }
 """
     }
@@ -124,6 +132,7 @@ void main() {
     private var centerUniform = 0
     private var resolutionUniform = 0
     private var ringColorUniform = 0
+    private var scaleUniform = 0
     private var radarTexture = 0
     private var paletteTexture = 0
     private var quadVbo = 0
@@ -161,6 +170,10 @@ void main() {
 
     @Volatile
     private var activePalette = ColorPalette.GREEN
+
+    /** Server-provided legend LUT bytes (256×4 RGBA); null = use local palette. */
+    @Volatile
+    private var legendLut: ByteArray? = null
 
     private val paletteDirty = AtomicBoolean(true) // upload on first frame
 
@@ -248,6 +261,15 @@ void main() {
         }
     }
 
+    /**
+     * Set the palette from the server-provided legend colour table.
+     * When set, the legend LUT takes precedence over the local [ColorPalette].
+     */
+    fun setLegendPalette(legend: RadarLegend?) {
+        legendLut = legend?.let { buildLegendLut(it) }
+        paletteDirty.set(true)
+    }
+
     /** Clear the entire radar texture buffer (e.g. when transmission stops). */
     fun clearAll() {
         synchronized(textureLock) {
@@ -279,6 +301,7 @@ void main() {
         centerUniform    = GLES20.glGetUniformLocation(programHandle, "u_Center")
         resolutionUniform = GLES20.glGetUniformLocation(programHandle, "u_Resolution")
         ringColorUniform = GLES20.glGetUniformLocation(programHandle, "u_RingColor")
+        scaleUniform     = GLES20.glGetUniformLocation(programHandle, "u_Scale")
 
         // Create and initialise radar texture (all zeros = no signal = black)
         val texHandles = IntArray(2)
@@ -333,7 +356,12 @@ void main() {
 
         // Upload palette if changed
         if (paletteDirty.compareAndSet(true, false)) {
-            uploadPalette(activePalette)
+            val legend = legendLut
+            if (legend != null) {
+                uploadPaletteBytes(legend)
+            } else {
+                uploadPalette(activePalette)
+            }
         }
 
         // Upload radar texture if new spoke data arrived
@@ -365,6 +393,11 @@ void main() {
             GLES20.glUniform2f(resolutionUniform, viewportWidth.toFloat(), viewportHeight.toFloat())
         }
 
+        // In portrait, scale up so the full circle is visible.
+        val aspect = viewportWidth.toFloat() / viewportHeight.toFloat()
+        val scale = if (aspect < 1f) 1f / aspect else 1f
+        GLES20.glUniform1f(scaleUniform, scale)
+
         // Upload palette-aware ring color
         val rc = ringColorForPalette(activePalette)
         GLES20.glUniform4f(ringColorUniform, rc[0], rc[1], rc[2], rc[3])
@@ -385,6 +418,11 @@ void main() {
     /** Upload a 256×1 RGBA palette texture for the given [ColorPalette]. */
     private fun uploadPalette(palette: ColorPalette) {
         val lut = buildPaletteLut(palette)
+        uploadPaletteBytes(lut)
+    }
+
+    /** Upload a raw 256×4-byte RGBA LUT as the palette texture. */
+    private fun uploadPaletteBytes(lut: ByteArray) {
         val buf = ByteBuffer.wrap(lut)
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, paletteTexture)
         GLES20.glTexImage2D(
@@ -397,6 +435,7 @@ void main() {
     /**
      * Build a 256×4-byte (RGBA) palette lookup table.
      * Each byte quartet maps intensity [0..255] to an RGBA colour.
+     * Index 0 is transparent (no radar return).
      */
     fun buildPaletteLut(palette: ColorPalette): ByteArray {
         val lut = ByteArray(256 * 4)
@@ -410,9 +449,55 @@ void main() {
             lut[i * 4 + 0] = r.toByte()
             lut[i * 4 + 1] = g.toByte()
             lut[i * 4 + 2] = b.toByte()
-            lut[i * 4 + 3] = 255.toByte()  // always fully opaque
+            lut[i * 4 + 3] = if (i == 0) 0.toByte() else 255.toByte()
         }
         return lut
+    }
+
+    /**
+     * Build a 256×4-byte (RGBA) palette from the server legend.
+     * Parses `#rrggbbaa` hex colour strings from [RadarLegend.pixels].
+     */
+    fun buildLegendLut(legend: RadarLegend): ByteArray {
+        val lut = ByteArray(256 * 4)
+        for (i in 0..255) {
+            if (i < legend.pixels.size) {
+                val hex = legend.pixels[i].color
+                val rgba = parseHexColor(hex)
+                lut[i * 4 + 0] = rgba[0]
+                lut[i * 4 + 1] = rgba[1]
+                lut[i * 4 + 2] = rgba[2]
+                lut[i * 4 + 3] = rgba[3]
+            }
+            // else: stays at 0,0,0,0 (transparent)
+        }
+        return lut
+    }
+
+    /**
+     * Parse a CSS-style hex colour `#rrggbbaa` or `#rrggbb` into a 4-byte RGBA array.
+     */
+    private fun parseHexColor(hex: String): ByteArray {
+        val h = hex.removePrefix("#")
+        return try {
+            when (h.length) {
+                8 -> byteArrayOf(
+                    h.substring(0, 2).toInt(16).toByte(),
+                    h.substring(2, 4).toInt(16).toByte(),
+                    h.substring(4, 6).toInt(16).toByte(),
+                    h.substring(6, 8).toInt(16).toByte(),
+                )
+                6 -> byteArrayOf(
+                    h.substring(0, 2).toInt(16).toByte(),
+                    h.substring(2, 4).toInt(16).toByte(),
+                    h.substring(4, 6).toInt(16).toByte(),
+                    0xFF.toByte(),
+                )
+                else -> byteArrayOf(0, 0, 0, 0)
+            }
+        } catch (_: NumberFormatException) {
+            byteArrayOf(0, 0, 0, 0)
+        }
     }
 
     /**

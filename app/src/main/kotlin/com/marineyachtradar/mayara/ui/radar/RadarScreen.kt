@@ -78,6 +78,9 @@ fun RadarScreen(
     val connectionLabel = (uiState as? RadarUiState.Connected)?.connectionLabel ?: ""
     val radarName = (uiState as? RadarUiState.Connected)?.radar?.name ?: ""
     val currentRadarId = (uiState as? RadarUiState.Connected)?.radar?.id ?: ""
+    val legend = (uiState as? RadarUiState.Connected)?.capabilities?.legend
+    val ranges = (uiState as? RadarUiState.Connected)?.capabilities?.ranges ?: emptyList()
+    val currentRangeIndex = (uiState as? RadarUiState.Connected)?.currentRangeIndex ?: 0
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -87,7 +90,16 @@ fun RadarScreen(
             latestSpoke = latestSpoke,
             spokesPerRevolution = spokesPerRevolution,
             palette = palette,
+            legend = legend,
             powerState = (uiState as? RadarUiState.Connected)?.powerState,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Layer 0b: Compass rose + range labels overlay
+        RadarOverlayCanvas(
+            ranges = ranges,
+            currentRangeIndex = currentRangeIndex,
+            distanceUnit = distanceUnit,
             modifier = Modifier.fillMaxSize(),
         )
 
