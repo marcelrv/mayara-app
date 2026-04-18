@@ -142,8 +142,4 @@ jobs:
           git push || echo "Nothing to push"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-r.so [skip ci]"
-          git push || echo "Nothing to push"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
