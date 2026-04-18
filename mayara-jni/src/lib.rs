@@ -23,7 +23,6 @@
 
 #![allow(non_snake_case)]
 
-use android_logger::Config;
 use anyhow::Result;
 use clap::Parser;
 use jni::objects::JClass;
@@ -32,8 +31,19 @@ use jni::JNIEnv;
 use log::{error, info, LevelFilter};
 use once_cell::sync::OnceCell;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::runtime::Runtime;
 use tokio::sync::oneshot;
+
+// Raw Android NDK log function — linked from the NDK's liblog.so at runtime.
+#[link(name = "log")]
+extern "C" {
+    fn __android_log_write(
+        prio: std::ffi::c_int,
+        tag: *const std::ffi::c_char,
+        text: *const std::ffi::c_char,
+    ) -> std::ffi::c_int;
+}
 
 // ---------------------------------------------------------------------------
 // Shared state
@@ -68,7 +78,6 @@ fn log_buf() -> &'static Mutex<Vec<String>> {
 }
 
 /// Append a line to the in-memory log ring-buffer (visible via `nativeGetLogs()`).
-/// Android logcat also receives the message via `android_logger`.
 fn append_log(line: String) {
     if let Ok(mut buf) = log_buf().lock() {
         // Keep the ring-buffer bounded: drop the oldest 20% when over 2000 lines.
@@ -79,13 +88,62 @@ fn append_log(line: String) {
     }
 }
 
-fn init_logging() {
-    android_logger::init_once(
-        Config::default()
-            .with_max_level(LevelFilter::Debug)
-            .with_tag("mayara-radar"),
-    );
+// ---------------------------------------------------------------------------
+// CompositeLogger: routes to both logcat AND in-app LOG_BUFFER
+// ---------------------------------------------------------------------------
+
+static LOGGING_INITIALIZED: AtomicBool = AtomicBool::new(false);
+
+/// A composite `log::Log` implementation that sends messages to:
+/// 1. Android logcat (via raw `__android_log_write`)
+/// 2. The in-app ring buffer (`LOG_BUFFER`) for the embedded server log screen.
+struct CompositeLogger;
+
+impl log::Log for CompositeLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Debug
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        // Route to logcat via the raw Android NDK log API.
+        let tag = std::ffi::CString::new("mayara-radar").unwrap_or_default();
+        let msg = format!("{}: {}", record.target(), record.args());
+        let cmsg = std::ffi::CString::new(msg.clone()).unwrap_or_default();
+        let priority = match record.level() {
+            log::Level::Error => 6, // ANDROID_LOG_ERROR
+            log::Level::Warn  => 5, // ANDROID_LOG_WARN
+            log::Level::Info  => 4, // ANDROID_LOG_INFO
+            log::Level::Debug => 3, // ANDROID_LOG_DEBUG
+            log::Level::Trace => 2, // ANDROID_LOG_VERBOSE
+        };
+        unsafe {
+            __android_log_write(priority, tag.as_ptr(), cmsg.as_ptr());
+        }
+
+        // Also route to in-app ring buffer (skip TRACE to avoid noise)
+        if record.level() <= log::Level::Debug {
+            append_log(format!(
+                "[{}] {}",
+                record.level(),
+                msg,
+            ));
+        }
+    }
+
+    fn flush(&self) {}
 }
+
+fn init_logging() {
+    if LOGGING_INITIALIZED.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_ok() {
+        let _ = log::set_logger(&COMPOSITE_LOGGER)
+            .map(|()| log::set_max_level(LevelFilter::Debug));
+    }
+}
+
+static COMPOSITE_LOGGER: CompositeLogger = CompositeLogger;
 
 // ---------------------------------------------------------------------------
 // JNI: nativeStart(port: Int, emulator: Boolean, pcapPath: String): Boolean

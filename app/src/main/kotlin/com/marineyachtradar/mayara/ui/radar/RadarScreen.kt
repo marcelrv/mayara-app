@@ -4,9 +4,13 @@ import android.content.Intent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
@@ -26,11 +30,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.marineyachtradar.mayara.data.model.ColorPalette
+import com.marineyachtradar.mayara.data.model.DistanceUnit
 import com.marineyachtradar.mayara.data.model.RadarUiState
 import com.marineyachtradar.mayara.ui.connection.ConnectionPickerDialog
 import com.marineyachtradar.mayara.ui.radar.bottomsheet.RadarControlSheet
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
 import com.marineyachtradar.mayara.ui.radar.overlay.PowerToggle
+import com.marineyachtradar.mayara.ui.radar.overlay.RadarPickerDialog
 import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
 import com.marineyachtradar.mayara.ui.settings.SettingsActivity
 
@@ -59,6 +65,9 @@ fun RadarScreen(
     val latestSpoke by viewModel.spokeFlow.collectAsState()
     val showControlSheet by viewModel.showControlSheet.collectAsState()
     val showConnectionPicker by viewModel.showConnectionPicker.collectAsState()
+    val showRadarPicker by viewModel.showRadarPicker.collectAsState()
+    val availableRadars by viewModel.availableRadars.collectAsState()
+    val distanceUnit by viewModel.distanceUnit.collectAsState()
 
     val spokesPerRevolution = (uiState as? RadarUiState.Connected)
         ?.capabilities?.spokesPerRevolution ?: 2048
@@ -66,6 +75,9 @@ fun RadarScreen(
         ?.controls?.palette ?: ColorPalette.GREEN
 
     val navigationData = (uiState as? RadarUiState.Connected)?.navigationData
+    val connectionLabel = (uiState as? RadarUiState.Connected)?.connectionLabel ?: ""
+    val radarName = (uiState as? RadarUiState.Connected)?.radar?.name ?: ""
+    val currentRadarId = (uiState as? RadarUiState.Connected)?.radar?.id ?: ""
     val context = LocalContext.current
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -75,11 +87,16 @@ fun RadarScreen(
             latestSpoke = latestSpoke,
             spokesPerRevolution = spokesPerRevolution,
             palette = palette,
+            powerState = (uiState as? RadarUiState.Connected)?.powerState,
             modifier = Modifier.fillMaxSize(),
         )
 
         // Layer 1: Settings gear icon + HUD (top-left, always visible)
-        Column(modifier = Modifier.align(Alignment.TopStart)) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.statusBars),
+        ) {
             IconButton(
                 onClick = {
                     context.startActivity(
@@ -95,6 +112,9 @@ fun RadarScreen(
             }
             HudOverlay(
                 navigationData = navigationData,
+                connectionLabel = connectionLabel,
+                radarName = radarName,
+                onRadarNameTapped = { viewModel.onRadarNameTapped() },
             )
         }
 
@@ -107,7 +127,9 @@ fun RadarScreen(
                 PowerToggle(
                     powerState = connected.powerState,
                     onPowerAction = { viewModel.onPowerAction(it) },
-                    modifier = Modifier.align(Alignment.TopEnd),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .windowInsetsPadding(WindowInsets.statusBars),
                 )
 
                 // Layer 3: Range controls (bottom-right)
@@ -116,7 +138,10 @@ fun RadarScreen(
                     currentIndex = connected.currentRangeIndex,
                     onRangeUp = { viewModel.onRangeUp() },
                     onRangeDown = { viewModel.onRangeDown() },
-                    modifier = Modifier.align(Alignment.BottomEnd),
+                    distanceUnit = distanceUnit,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .windowInsetsPadding(WindowInsets.navigationBars),
                 )
 
                 // Layer 4: Radar settings FAB (bottom-center, spec §3.4)
@@ -127,6 +152,7 @@ fun RadarScreen(
                     contentColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(bottom = 16.dp),
                 ) {
                     Icon(
@@ -183,15 +209,26 @@ fun RadarScreen(
         if (showConnectionPicker) {
             val lastHost by viewModel.lastNetworkHost.collectAsState()
             val lastPort by viewModel.lastNetworkPort.collectAsState()
+            val discoveredServers by viewModel.discoveredServers.collectAsState()
             
             ConnectionPickerDialog(
-                discoveredServers = emptyList(), // Phase 5: wire MdnsScanner
+                discoveredServers = discoveredServers,
                 initialHost = lastHost,
                 initialPort = lastPort,
                 onConnect = { mode, remember ->
                     viewModel.onConnect(mode, remember)
                 },
                 onDismiss = { viewModel.onDismissConnectionPicker() },
+            )
+        }
+
+        // Layer 7: Radar picker dialog (BF-05)
+        if (showRadarPicker) {
+            RadarPickerDialog(
+                radars = availableRadars,
+                currentRadarId = currentRadarId,
+                onSelect = { viewModel.onSwitchRadar(it) },
+                onDismiss = { viewModel.onDismissRadarPicker() },
             )
         }
     }

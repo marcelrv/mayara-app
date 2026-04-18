@@ -126,6 +126,7 @@ dependencies {
 
     // Unit tests (JVM)
     testImplementation(libs.junit5.api)
+    testImplementation(libs.junit5.params)
     testRuntimeOnly(libs.junit5.engine)
     testRuntimeOnly(libs.junit5.launcher)
     testImplementation(libs.mockk)

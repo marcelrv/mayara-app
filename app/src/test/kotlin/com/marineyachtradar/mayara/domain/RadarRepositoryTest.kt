@@ -342,4 +342,56 @@ class RadarRepositoryTest {
 
         coVerify { apiClient.putControl("emulator_1", "power", 0f, null) }
     }
+
+    // ------------------------------------------------------------------
+    // BF-07: Power state default and edge cases
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `connect with no power key in controls defaults to STANDBY`() = runTest {
+        val valuesNoPower = testControlValues.filterKeys { it != "power" }
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns valuesNoPower
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        val state = repository.uiState.value as? RadarUiState.Connected
+        assertEquals(PowerState.STANDBY, state?.powerState)
+    }
+
+    @Test
+    fun `connect with power value 2 gives TRANSMIT`() = runTest {
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns testControlValues
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        val state = repository.uiState.value as? RadarUiState.Connected
+        assertEquals(PowerState.TRANSMIT, state?.powerState)
+    }
+
+    @Test
+    fun `control stream with unknown power value 99 defaults to STANDBY`() = runTest {
+        val powerUpdate = ControlUpdate(
+            radarId = "emulator_1",
+            controlId = "power",
+            value = 99f,
+        )
+        every { streamClient.connect(any()) } returns flowOf(powerUpdate)
+        coEvery { apiClient.getRadars() } returns listOf(testRadar)
+        coEvery { apiClient.getCapabilities("emulator_1") } returns testCapabilities
+        coEvery { apiClient.getControls("emulator_1") } returns testControlValues
+        buildRepository()
+
+        repository.connect("http://127.0.0.1:6502")
+
+        val state = repository.uiState.value
+        if (state is RadarUiState.Connected) {
+            assertEquals(PowerState.STANDBY, state.powerState)
+        }
+    }
 }

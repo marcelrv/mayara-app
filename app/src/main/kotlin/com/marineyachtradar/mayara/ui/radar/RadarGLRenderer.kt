@@ -63,9 +63,15 @@ uniform sampler2D u_Radar;
 uniform sampler2D u_Palette;
 uniform vec2 u_Center;       // pan offset in [−0.5..0.5] normalized units
 uniform vec2 u_Resolution;   // viewport size in pixels
+uniform vec4 u_RingColor;    // range ring colour (palette-aware)
 
 const float PI = 3.14159265;
 const vec4 BACKGROUND = vec4(0.043, 0.047, 0.063, 1.0); // #0B0C10
+
+// Range rings at 25 %, 50 %, 75 % of maximum range.
+const float R1 = 0.125;  // 25 % of radius 0.5
+const float R2 = 0.250;  // 50 %
+const float R3 = 0.375;  // 75 %
 
 void main() {
     // Convert fragment position to [-0.5 .. 0.5] centered coordinates.
@@ -81,13 +87,25 @@ void main() {
         return;
     }
 
-    // v = 0 at outer edge, 1 at center.  Row 0 in texture = center, so we flip.
-    float v = 1.0 - (dist / 0.5);
+    // Range ring width: ~1.5 px scaled to normalized coordinates.
+    float ringWidth = 1.5 / max(u_Resolution.x, u_Resolution.y);
+
+    // Draw range rings before the texture sample so rings appear on top.
+    if (abs(dist - R1) < ringWidth ||
+        abs(dist - R2) < ringWidth ||
+        abs(dist - R3) < ringWidth) {
+        gl_FragColor = u_RingColor;
+        return;
+    }
+
+    // v = 0 at screen centre (near range), 1 at screen edge (far range).
+    // Row 0 in texture = near range = GL t=0 (bottom of texture).
+    float v = dist / 0.5;
 
     // atan(x, y): angle measured clockwise from North (y-up), result in [-PI..PI].
     float angle = atan(radarPos.x, radarPos.y);
     // Map angle to [0..1], starting at North.
-    float u = fract(angle / (2.0 * PI) + 0.5);
+    float u = fract(angle / (2.0 * PI));
 
     float intensity = texture2D(u_Radar, vec2(u, v)).r;
     gl_FragColor = texture2D(u_Palette, vec2(intensity, 0.5));
@@ -105,6 +123,7 @@ void main() {
     private var paletteUniform = 0
     private var centerUniform = 0
     private var resolutionUniform = 0
+    private var ringColorUniform = 0
     private var radarTexture = 0
     private var paletteTexture = 0
     private var quadVbo = 0
@@ -144,6 +163,8 @@ void main() {
     private var activePalette = ColorPalette.GREEN
 
     private val paletteDirty = AtomicBoolean(true) // upload on first frame
+
+    private val resolutionDirty = AtomicBoolean(true) // upload on first frame and orientation change
 
     // -----------------------------------------------------------------------
     // Quad geometry (NDC full-screen: (-1,-1) .. (1,1))
@@ -227,6 +248,14 @@ void main() {
         }
     }
 
+    /** Clear the entire radar texture buffer (e.g. when transmission stops). */
+    fun clearAll() {
+        synchronized(textureLock) {
+            textureBuffer.fill(0)
+        }
+        textureDirty.set(true)
+    }
+
     // =======================================================================
     // GLSurfaceView.Renderer callbacks (GL thread only)
     // =======================================================================
@@ -249,6 +278,7 @@ void main() {
         paletteUniform   = GLES20.glGetUniformLocation(programHandle, "u_Palette")
         centerUniform    = GLES20.glGetUniformLocation(programHandle, "u_Center")
         resolutionUniform = GLES20.glGetUniformLocation(programHandle, "u_Resolution")
+        ringColorUniform = GLES20.glGetUniformLocation(programHandle, "u_RingColor")
 
         // Create and initialise radar texture (all zeros = no signal = black)
         val texHandles = IntArray(2)
@@ -294,6 +324,7 @@ void main() {
         GLES20.glViewport(0, 0, width, height)
         viewportWidth  = width
         viewportHeight = height
+        resolutionDirty.set(true)
     }
 
     override fun onDrawFrame(gl: GL10?) {
@@ -329,7 +360,14 @@ void main() {
         GLES20.glUniform1i(paletteUniform, 1)
 
         GLES20.glUniform2f(centerUniform, centerX, centerY)
-        GLES20.glUniform2f(resolutionUniform, viewportWidth.toFloat(), viewportHeight.toFloat())
+
+        if (resolutionDirty.getAndSet(false)) {
+            GLES20.glUniform2f(resolutionUniform, viewportWidth.toFloat(), viewportHeight.toFloat())
+        }
+
+        // Upload palette-aware ring color
+        val rc = ringColorForPalette(activePalette)
+        GLES20.glUniform4f(ringColorUniform, rc[0], rc[1], rc[2], rc[3])
 
         GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, quadVbo)
         GLES20.glEnableVertexAttribArray(positionHandle)
@@ -389,6 +427,18 @@ void main() {
             i < 204 -> Triple(((i - 153) * 5), 255, 0)
             else    -> Triple(255, (255 - (i - 204) * 5), 0)
         }
+    }
+
+    // =======================================================================
+    // Range ring colour per palette
+    // =======================================================================
+
+    /** Returns [r, g, b, a] in 0..1 range for the given palette. */
+    private fun ringColorForPalette(palette: ColorPalette): FloatArray = when (palette) {
+        ColorPalette.GREEN       -> floatArrayOf(0.0f, 0.20f, 0.0f, 0.7f)
+        ColorPalette.YELLOW      -> floatArrayOf(0.20f, 0.18f, 0.0f, 0.7f)
+        ColorPalette.NIGHT_RED   -> floatArrayOf(0.20f, 0.0f, 0.0f, 0.7f)
+        ColorPalette.MULTI_COLOR -> floatArrayOf(0.25f, 0.25f, 0.25f, 0.7f)
     }
 
     // =======================================================================

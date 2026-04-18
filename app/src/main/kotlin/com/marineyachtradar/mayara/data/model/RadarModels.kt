@@ -111,6 +111,7 @@ sealed interface RadarUiState {
         val powerState: PowerState,
         val currentRangeIndex: Int,
         val navigationData: NavigationData?,
+        val connectionLabel: String = "",
     ) : RadarUiState
 
     /** Server unreachable or fatal error. */

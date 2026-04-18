@@ -94,8 +94,8 @@ class ConnectionManagerTest {
 
         val prefs = dataStore.data.first()
         assertEquals("network", prefs[stringPreferencesKey("connection_mode")])
-        assertEquals("10.0.0.1", prefs[stringPreferencesKey("remembered_host")])
-        assertEquals("6502", prefs[stringPreferencesKey("remembered_port")])
+        assertEquals("10.0.0.1", prefs[stringPreferencesKey("last_host")])
+        assertEquals("6502", prefs[stringPreferencesKey("last_port")])
     }
 
     @Test

@@ -9,6 +9,7 @@ import com.marineyachtradar.mayara.data.api.SignalKStreamClient
 import com.marineyachtradar.mayara.data.api.SpokeWebSocketClient
 import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.ConnectionMode
+import com.marineyachtradar.mayara.data.model.DistanceUnit
 import com.marineyachtradar.mayara.data.model.PowerState
 import com.marineyachtradar.mayara.data.model.RadarOrientation
 import com.marineyachtradar.mayara.data.model.RadarUiState
@@ -48,6 +49,82 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     private val unitsPreferences = UnitsPreferences(application.mayaraDataStore)
     private val connectionManager = ConnectionManager(application.mayaraDataStore)
 
+    private val mdnsScanner: com.marineyachtradar.mayara.data.nsd.MdnsScanner = run {
+        val nsdManager = application.getSystemService(android.net.nsd.NsdManager::class.java)
+        val listenerMap = mutableMapOf<com.marineyachtradar.mayara.data.nsd.NsdDiscoveryListener,
+                android.net.nsd.NsdManager.DiscoveryListener>()
+        com.marineyachtradar.mayara.data.nsd.MdnsScanner(
+            startDiscovery = { serviceType, listener ->
+                val nsdListener = object : android.net.nsd.NsdManager.DiscoveryListener {
+                    override fun onDiscoveryStarted(regType: String) { listener.onDiscoveryStarted(regType) }
+                    override fun onDiscoveryStopped(serviceType: String) { listener.onDiscoveryStopped(serviceType) }
+                    override fun onServiceFound(serviceInfo: android.net.nsd.NsdServiceInfo) {
+                        listener.onServiceFound(
+                            com.marineyachtradar.mayara.data.nsd.NsdServiceInfo(
+                                name = serviceInfo.serviceName ?: "",
+                                serviceType = serviceInfo.serviceType ?: "",
+                            )
+                        )
+                    }
+                    override fun onServiceLost(serviceInfo: android.net.nsd.NsdServiceInfo) {
+                        listener.onServiceLost(
+                            com.marineyachtradar.mayara.data.nsd.NsdServiceInfo(
+                                name = serviceInfo.serviceName ?: "",
+                                serviceType = serviceInfo.serviceType ?: "",
+                            )
+                        )
+                    }
+                    override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                        listener.onStartDiscoveryFailed(serviceType, errorCode)
+                    }
+                    override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+                        listener.onStopDiscoveryFailed(serviceType, errorCode)
+                    }
+                }
+                listenerMap[listener] = nsdListener
+                try {
+                    nsdManager.discoverServices(serviceType, android.net.nsd.NsdManager.PROTOCOL_DNS_SD, nsdListener)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to start mDNS discovery for $serviceType", e)
+                }
+            },
+            stopDiscovery = { listener ->
+                listenerMap.remove(listener)?.let { nsdListener ->
+                    try {
+                        nsdManager.stopServiceDiscovery(nsdListener)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to stop mDNS discovery", e)
+                    }
+                }
+            },
+            resolveService = { serviceInfo, resolveListener ->
+                val nsdInfo = android.net.nsd.NsdServiceInfo().apply {
+                    serviceName = serviceInfo.name
+                    serviceType = serviceInfo.serviceType
+                }
+                try {
+                    nsdManager.resolveService(nsdInfo, object : android.net.nsd.NsdManager.ResolveListener {
+                        override fun onResolveFailed(si: android.net.nsd.NsdServiceInfo, errorCode: Int) {
+                            resolveListener.onResolveFailed(serviceInfo, errorCode)
+                        }
+                        override fun onServiceResolved(si: android.net.nsd.NsdServiceInfo) {
+                            resolveListener.onServiceResolved(
+                                com.marineyachtradar.mayara.data.nsd.NsdServiceInfo(
+                                    name = si.serviceName ?: "",
+                                    serviceType = si.serviceType ?: "",
+                                    host = si.host?.hostAddress ?: "",
+                                    port = si.port,
+                                )
+                            )
+                        }
+                    })
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to resolve mDNS service ${serviceInfo.name}", e)
+                }
+            },
+        )
+    }
+
     private val repository = RadarRepository(
         apiClient = RadarApiClient(EMBEDDED_BASE_URL),
         spokeClient = SpokeWebSocketClient(),
@@ -61,6 +138,13 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     /** Exposed so the GL renderer can subscribe to spoke data. */
     val spokeFlow = repository.spokeFlow
 
+    /** All radars discovered on the connected server. */
+    val availableRadars: StateFlow<List<com.marineyachtradar.mayara.data.model.RadarInfo>> = repository.availableRadars
+
+    /** Controls visibility of the radar picker dialog. */
+    private val _showRadarPicker = MutableStateFlow(false)
+    val showRadarPicker: StateFlow<Boolean> = _showRadarPicker.asStateFlow()
+
     /** Controls visibility of the advanced radar control bottom sheet. */
     private val _showControlSheet = MutableStateFlow(false)
     val showControlSheet: StateFlow<Boolean> = _showControlSheet.asStateFlow()
@@ -68,6 +152,9 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     /** Controls visibility of the connection picker dialog. */
     private val _showConnectionPicker = MutableStateFlow(false)
     val showConnectionPicker: StateFlow<Boolean> = _showConnectionPicker.asStateFlow()
+
+    /** Discovered servers from mDNS scanning. */
+    val discoveredServers: StateFlow<List<com.marineyachtradar.mayara.data.model.DiscoveredServer>> = mdnsScanner.discovered
     
     val lastNetworkHost: StateFlow<String> = connectionManager.lastNetworkHost
         .map { it ?: "" }
@@ -76,6 +163,10 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     val lastNetworkPort: StateFlow<String> = connectionManager.lastNetworkPort
         .map { it ?: "6502" }
         .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, "6502")
+
+    /** User's preferred distance unit from settings. */
+    val distanceUnit: StateFlow<DistanceUnit> = unitsPreferences.distanceUnit
+        .stateIn(viewModelScope, kotlinx.coroutines.flow.SharingStarted.Eagerly, DistanceUnit.NM)
 
     init {
         viewModelScope.launch {
@@ -165,9 +256,11 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val url = "http://127.0.0.1:${mode.port}"
                 repository.connect(url)
+                repository.setConnectionLabel("Embedded (127.0.0.1:${mode.port})")
             }
             is ConnectionMode.Network -> {
                 repository.connect(mode.baseUrl)
+                repository.setConnectionLabel("Network (${mode.baseUrl.removePrefix("http://").removePrefix("https://")})")
             }
             is ConnectionMode.PcapDemo -> {
                 val started = try {
@@ -184,6 +277,7 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val url = "http://127.0.0.1:${mode.port}"
                 repository.connect(url)
+                repository.setConnectionLabel("PCAP Demo (127.0.0.1:${mode.port})")
             }
         }
     }
@@ -202,10 +296,39 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onShowConnectionPicker() {
         _showConnectionPicker.value = true
+        mdnsScanner.startScanning()
     }
 
     fun onDismissConnectionPicker() {
         _showConnectionPicker.value = false
+        mdnsScanner.stopScanning()
+    }
+
+    // ------------------------------------------------------------------
+    // Radar picker (multi-radar switching)
+    // ------------------------------------------------------------------
+
+    /** Called when the user taps the radar name. Shows picker only when >1 radar. */
+    fun onRadarNameTapped() {
+        if (availableRadars.value.size > 1) {
+            _showRadarPicker.value = true
+        }
+    }
+
+    fun onDismissRadarPicker() {
+        _showRadarPicker.value = false
+    }
+
+    /** Switch to a different radar on the same server. */
+    fun onSwitchRadar(radarId: String) {
+        _showRadarPicker.value = false
+        // Reconnect to the same base URL; repository will auto-select the given radar
+        // For now we just reconnect — the repository picks radars.first().
+        // TODO: Pass the desired radarId to the repository so it selects that one.
+        viewModelScope.launch {
+            val state = uiState.value as? RadarUiState.Connected ?: return@launch
+            repository.connectToRadar(radarId)
+        }
     }
 
     // ------------------------------------------------------------------

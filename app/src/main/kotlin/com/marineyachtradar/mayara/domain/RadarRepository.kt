@@ -65,6 +65,10 @@ class RadarRepository(
     private var activeSpokeJob: Job? = null
     private var currentRadarId: String? = null
 
+    /** All radars discovered during the last successful `getRadars()` call. */
+    private val _availableRadars = MutableStateFlow<List<RadarInfo>>(emptyList())
+    val availableRadars: StateFlow<List<RadarInfo>> = _availableRadars.asStateFlow()
+
     // ------------------------------------------------------------------
     // Connection lifecycle
     // ------------------------------------------------------------------
@@ -93,6 +97,7 @@ class RadarRepository(
                     return@launch
                 }
                 android.util.Log.i("RadarRepository", "Found radars: $radars")
+                _availableRadars.value = radars
                 val radar = radars.first()
                 currentRadarId = radar.id
 
@@ -102,8 +107,9 @@ class RadarRepository(
                 val controlValues = apiClient.getControls(radar.id)
                 val controlsState = CapabilitiesMapper.buildInitialControlsState(capabilities, controlValues)
 
-                // 3. Derive initial power state from the "power" control value
-                val powerValue = controlValues["power"]?.value?.toInt() ?: 0
+                // 3. Derive initial power state from the "power" control value.
+                // Default to STANDBY (1) if absent — safer than OFF for already-transmitting radars.
+                val powerValue = controlValues["power"]?.value?.toInt() ?: 1
                 val powerState = powerValueToState(powerValue)
 
                 // 4. Determine the initial range index
@@ -133,6 +139,57 @@ class RadarRepository(
             } catch (e: Exception) {
                 android.util.Log.e("RadarRepository", "Connection failed", e)
                 _uiState.value = RadarUiState.Error(e.message ?: "Connection failed")
+            }
+        }
+    }
+
+    /**
+     * Switch to a specific radar by [radarId] on the already-connected server.
+     * Reuses the current [apiClient.baseUrl].
+     */
+    fun connectToRadar(radarId: String) {
+        val baseUrl = apiClient.baseUrl
+        disconnect()
+        _uiState.value = RadarUiState.Loading
+        connectJob = scope.launch {
+            try {
+                val radar = _availableRadars.value.firstOrNull { it.id == radarId }
+                    ?: run {
+                        _uiState.value = RadarUiState.Error("Radar $radarId not found")
+                        return@launch
+                    }
+                currentRadarId = radar.id
+
+                val capabilities = apiClient.getCapabilities(radar.id)
+                val controlValues = apiClient.getControls(radar.id)
+                val controlsState = CapabilitiesMapper.buildInitialControlsState(capabilities, controlValues)
+
+                val powerValue = controlValues["power"]?.value?.toInt() ?: 1
+                val powerState = powerValueToState(powerValue)
+
+                val currentRangeMetres = controlValues["range"]?.value?.toInt()
+                val rangeIndex = capabilities.ranges.indexOfFirst { it == currentRangeMetres }
+                    .takeIf { it >= 0 } ?: 0
+
+                _uiState.value = RadarUiState.Connected(
+                    radar = radar,
+                    capabilities = capabilities,
+                    controls = controlsState,
+                    powerState = powerState,
+                    currentRangeIndex = rangeIndex,
+                    navigationData = null,
+                )
+
+                launchSpokeStream(radar)
+
+                val streamUrl = baseUrl.replace("http://", "ws://")
+                    .replace("https://", "wss://") + "/signalk/v1/stream"
+                launchControlStream(radar.id, streamUrl)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("RadarRepository", "Switch to radar $radarId failed", e)
+                _uiState.value = RadarUiState.Error(e.message ?: "Switch failed")
             }
         }
     }
@@ -255,13 +312,37 @@ class RadarRepository(
         _uiState.value = state.copy(navigationData = navData)
     }
 
+    /** Set the connection label shown in the HUD (e.g. "Embedded (127.0.0.1:6502)"). */
+    fun setConnectionLabel(label: String) {
+        val state = _uiState.value as? RadarUiState.Connected ?: return
+        _uiState.value = state.copy(connectionLabel = label)
+    }
+
     // ------------------------------------------------------------------
     // Internal stream launchers
     // ------------------------------------------------------------------
 
     private fun launchSpokeStream(radar: RadarInfo) {
+        var lastRangeUpdateAngle = -1
         activeSpokeJob = spokeClient.connect(radar.spokeDataUrl)
-            .onEach { _spokeFlow.value = it }
+            .onEach { spoke ->
+                _spokeFlow.value = spoke
+                // Spoke-based range detection: update range if spoke reports a different range.
+                // Throttled: only once per full revolution (when angle wraps around).
+                if (spoke.rangeMetres > 0 && (lastRangeUpdateAngle < 0 || spoke.angle < lastRangeUpdateAngle)) {
+                    lastRangeUpdateAngle = spoke.angle
+                    val state = _uiState.value as? RadarUiState.Connected ?: return@onEach
+                    val received = spoke.rangeMetres
+                    val idx = state.capabilities.ranges.indexOfFirst {
+                        Math.abs(it - received) <= maxOf(1, (it * 0.02).toInt())
+                    }
+                    if (idx >= 0 && idx != state.currentRangeIndex) {
+                        _uiState.value = state.copy(currentRangeIndex = idx)
+                    }
+                } else {
+                    lastRangeUpdateAngle = spoke.angle
+                }
+            }
             .catch { /* spoke stream error — silently stop until reconnect */ }
             .launchIn(scope)
     }
@@ -283,7 +364,10 @@ class RadarRepository(
                 _uiState.value = state.copy(powerState = newPower)
             }
             "range" -> {
-                val idx = state.capabilities.ranges.indexOfFirst { it == update.value.toInt() }
+                val received = update.value.toInt()
+                val idx = state.capabilities.ranges.indexOfFirst {
+                    Math.abs(it - received) <= maxOf(1, (it * 0.02).toInt())
+                }
                 if (idx >= 0) _uiState.value = state.copy(currentRangeIndex = idx)
             }
             else -> {
@@ -302,7 +386,13 @@ class RadarRepository(
         0 -> PowerState.OFF
         1 -> PowerState.STANDBY
         2 -> PowerState.TRANSMIT
-        else -> PowerState.STANDBY
+        else -> {
+            android.util.Log.w("RadarRepository",
+                "Unknown power value $value, defaulting to STANDBY")
+            // TODO: future iterations should derive the mapping from the capabilities
+            // schema if radar vendors use non-standard numeric power codes.
+            PowerState.STANDBY
+        }
     }
 
     private fun powerStateToValue(state: PowerState): Int = when (state) {

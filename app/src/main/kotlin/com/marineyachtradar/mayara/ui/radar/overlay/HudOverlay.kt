@@ -1,5 +1,6 @@
 package com.marineyachtradar.mayara.ui.radar.overlay
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -11,28 +12,46 @@ import androidx.compose.ui.unit.dp
 import com.marineyachtradar.mayara.data.model.NavigationData
 
 /**
- * HUD overlay displaying heading, SOG, and COG.
+ * HUD overlay displaying connection label, heading, SOG, and COG.
  *
- * The composable is entirely absent from the layout when [navigationData] is null
- * (i.e., no NMEA/SignalK navigation source is connected).
+ * The navigation rows are absent when [navigationData] is null.
+ * The connection label is shown when non-blank regardless of navigation data.
  *
  * Monospace font is used for the values to prevent layout jitter as numbers change.
  */
 @Composable
 fun HudOverlay(
     navigationData: NavigationData?,
+    connectionLabel: String = "",
+    radarName: String = "",
+    onRadarNameTapped: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    navigationData ?: return   // Spec §3.3: hidden when no navigation data
+    if (connectionLabel.isBlank() && radarName.isBlank() && navigationData == null) return
 
     Column(modifier = modifier.padding(12.dp)) {
-        navigationData.headingDeg?.let { heading ->
+        if (connectionLabel.isNotBlank()) {
+            Text(
+                text = connectionLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            )
+        }
+        if (radarName.isNotBlank()) {
+            Text(
+                text = radarName,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable { onRadarNameTapped() },
+            )
+        }
+        navigationData?.headingDeg?.let { heading ->
             HudRow(label = "HDG", value = "%.1f°".format(heading))
         }
-        navigationData.sogKnots?.let { sog ->
+        navigationData?.sogKnots?.let { sog ->
             HudRow(label = "SOG", value = "%.1f kt".format(sog))
         }
-        navigationData.cogDeg?.let { cog ->
+        navigationData?.cogDeg?.let { cog ->
             HudRow(label = "COG", value = "%.1f°".format(cog))
         }
     }

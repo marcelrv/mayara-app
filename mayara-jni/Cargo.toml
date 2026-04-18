@@ -21,7 +21,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "sync", "
 
 # Logging
 log = "0.4"
-android_logger = "0.14"
 
 # Error handling
 anyhow = "1.0"

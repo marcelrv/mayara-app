@@ -6,10 +6,12 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import com.marineyachtradar.mayara.data.model.ColorPalette
+import com.marineyachtradar.mayara.data.model.PowerState
 import com.marineyachtradar.mayara.data.model.SpokeData
 
 /**
@@ -33,9 +35,17 @@ fun RadarGLView(
     latestSpoke: SpokeData?,
     spokesPerRevolution: Int,
     palette: ColorPalette,
+    powerState: PowerState? = null,
     modifier: Modifier = Modifier,
 ) {
     val renderer = remember { RadarGLRenderer() }
+
+    // Clear the radar texture when power transitions away from TRANSMIT
+    LaunchedEffect(powerState) {
+        if (powerState != null && powerState != PowerState.TRANSMIT) {
+            renderer.clearAll()
+        }
+    }
 
     AndroidView(
         modifier = modifier,

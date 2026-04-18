@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.marineyachtradar.mayara.data.model.DistanceUnit
 
 /**
  * Range controls: large + / − buttons with current range value in the centre.
@@ -27,10 +28,8 @@ import androidx.compose.ui.unit.sp
  * - `+` is disabled when [currentIndex] is at the last (maximum) range.
  * - `−` is disabled when [currentIndex] is 0 (minimum range).
  * - Range value is displayed in a monospace font to prevent layout jitter.
- * - Distance unit conversion (NM / KM / SM) is handled upstream; this composable
- *   receives values already formatted as strings by the domain layer.
- *
- * TODO Phase 2: pass formatted range string from domain layer (unit-aware).
+ * - Distance unit conversion (NM / KM / SM) uses [RangeFormatter] with the user's
+ *   preferred [distanceUnit].
  */
 @Composable
 fun RangeControls(
@@ -38,10 +37,11 @@ fun RangeControls(
     currentIndex: Int,
     onRangeUp: () -> Unit,
     onRangeDown: () -> Unit,
+    distanceUnit: DistanceUnit = DistanceUnit.NM,
     modifier: Modifier = Modifier,
 ) {
     val currentRangeMetres = ranges.getOrNull(currentIndex)
-    val displayText = currentRangeMetres?.let { formatRange(it) } ?: "--"
+    val displayText = currentRangeMetres?.let { RangeFormatter.format(it, distanceUnit) } ?: "--"
 
     Column(
         modifier = modifier.padding(12.dp),
@@ -80,8 +80,5 @@ fun RangeControls(
     }
 }
 
-/** Format a range in metres to a human-readable string (NM with one decimal). */
-internal fun formatRange(metres: Int): String {
-    val nm = metres / 1852.0
-    return "%.1f NM".format(nm)
-}
+/** Legacy format function — delegates to [RangeFormatter] with NM. */
+internal fun formatRange(metres: Int): String = RangeFormatter.format(metres, DistanceUnit.NM)

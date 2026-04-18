@@ -7,8 +7,9 @@ import org.junit.jupiter.api.Test
 /**
  * Unit tests for [formatRange].
  *
- * The range display must use a stable, predictable format so the monospace
- * font layout doesn't jitter at boundary values.
+ * Since BF-03 the legacy [formatRange] delegates to [RangeFormatter] with NM.
+ * These tests verify backward-compatible formatting and that fraction notation
+ * is applied for sub-1 NM ranges.
  */
 class RangeFormatTest {
 
@@ -18,8 +19,8 @@ class RangeFormatTest {
     }
 
     @Test
-    fun `926 metres (half NM) formats as 0_5 NM`() {
-        assertEquals("0.5 NM", formatRange(926))
+    fun `926 metres (half NM) formats as fraction`() {
+        assertEquals("1/2 NM", formatRange(926))
     }
 
     @Test
@@ -48,12 +49,16 @@ class RangeFormatTest {
     }
 
     @Test
-    fun `output always has exactly one decimal place`() {
-        listOf(300, 1852, 3704, 18520).forEach { metres ->
+    fun `decimal ranges have appropriate precision`() {
+        // Values above 1 NM but below 10 NM: 1 decimal place
+        listOf(1852, 3704).forEach { metres ->
             val value = formatRange(metres).removeSuffix(" NM")
             val dotIndex = value.indexOf('.')
             assertTrue(dotIndex >= 0, "No decimal point in '$value'")
             assertEquals(1, value.length - dotIndex - 1, "Expected 1 decimal place in '$value'")
         }
+        // Values >= 10 NM: no decimal
+        val bigValue = formatRange(18520).removeSuffix(" NM")
+        assertEquals(-1, bigValue.indexOf('.'), "Expected no decimal in '$bigValue'")
     }
 }
