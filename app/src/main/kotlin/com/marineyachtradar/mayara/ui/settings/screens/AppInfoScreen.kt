@@ -111,7 +111,7 @@ fun AppInfoScreen(
             }
             item {
                 ListItem(
-                    headlineContent = { Text("Mayara App") },
+                    headlineContent = { Text(appName) },
                     trailingContent = { Text("GPL-2.0") },
                 )
                 HorizontalDivider()

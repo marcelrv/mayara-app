@@ -18,9 +18,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * ViewModel for [SettingsActivity].
@@ -139,20 +144,56 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Fetch the embedded server version from [RadarJni] on the IO dispatcher.
+     * Fetch the server version, trying JNI first, then HTTP `/signalk` endpoint.
      *
-     * Wrapped in [try/catch][Throwable] because [RadarJni] loads `libradar.so` in its `init`
-     * block — if the library is absent (e.g. debug builds without the .so), accessing `RadarJni`
-     * will throw [UnsatisfiedLinkError] at class initialisation.
+     * JNI may fail if `libradar.so` is absent (network-only builds). In that case
+     * we fall back to the SignalK discovery endpoint exposed by any mayara-server.
      */
     private fun refreshServerVersion() {
         viewModelScope.launch(Dispatchers.IO) {
+            // Try JNI first (embedded server)
             try {
-                _serverVersion.value = RadarJni.getServerVersion()
-            } catch (t: Throwable) {
-                // If libradar.so is unavailable, leave it empty or set a default
-                _serverVersion.value = ""
+                val v = RadarJni.getServerVersion()
+                if (v.isNotEmpty()) {
+                    _serverVersion.value = v
+                    return@launch
+                }
+            } catch (_: Throwable) {
+                // libradar.so unavailable — try HTTP
             }
+
+            // Fallback: fetch from /signalk endpoint
+            try {
+                val baseUrl = resolveBaseUrl() ?: return@launch
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(5, TimeUnit.SECONDS)
+                    .readTimeout(5, TimeUnit.SECONDS)
+                    .build()
+                val request = Request.Builder()
+                    .url("$baseUrl/signalk")
+                    .get()
+                    .build()
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = JSONObject(response.body?.string() ?: "")
+                        val version = json.optJSONObject("server")?.optString("version", "") ?: ""
+                        if (version.isNotEmpty()) {
+                            _serverVersion.value = version
+                        }
+                    }
+                }
+            } catch (_: Throwable) {
+                // Server not reachable yet
+            }
+        }
+    }
+
+    private suspend fun resolveBaseUrl(): String? {
+        return when (val mode = connectionManager.rememberedMode.first()) {
+            is ConnectionMode.Embedded -> "http://127.0.0.1:${mode.port}"
+            is ConnectionMode.Network -> mode.baseUrl
+            is ConnectionMode.PcapDemo -> "http://127.0.0.1:${mode.port}"
+            null -> null
         }
     }
 
