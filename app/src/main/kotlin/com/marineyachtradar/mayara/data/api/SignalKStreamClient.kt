@@ -95,12 +95,27 @@ class SignalKStreamClient(
                 val entry = values.optJSONObject(j) ?: continue
                 val path = entry.optString("path") ?: continue
                 val parsed = parseRadarControlPath(path) ?: continue
+
+                // The server wraps control values in a BareControlValue object:
+                //   { "path": "...", "value": { "value": 50, "auto": false } }
+                // Unwrap the nested object; fall back to flat format for compatibility.
+                val valueObj = entry.optJSONObject("value")
+                val numericValue: Float
+                val autoValue: Boolean
+                if (valueObj != null) {
+                    numericValue = valueObj.optDouble("value", 0.0).toFloat()
+                    autoValue = valueObj.optBoolean("auto", false)
+                } else {
+                    numericValue = entry.optDouble("value", 0.0).toFloat()
+                    autoValue = entry.optBoolean("auto", false)
+                }
+
                 result.add(
                     ControlUpdate(
                         radarId = parsed.first,
                         controlId = parsed.second,
-                        value = entry.optDouble("value", 0.0).toFloat(),
-                        auto = entry.optBoolean("auto", false),
+                        value = numericValue,
+                        auto = autoValue,
                     )
                 )
             }

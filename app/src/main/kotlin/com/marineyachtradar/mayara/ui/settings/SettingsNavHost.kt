@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.marineyachtradar.mayara.domain.RadarInfoSnapshot
 import com.marineyachtradar.mayara.ui.settings.screens.AppInfoScreen
 import com.marineyachtradar.mayara.ui.settings.screens.ConnectionSettingsScreen
 import com.marineyachtradar.mayara.ui.settings.screens.EmbeddedServerLogsScreen
@@ -50,6 +51,7 @@ fun SettingsNavHost(
     val distanceUnit by viewModel.distanceUnit.collectAsState()
     val bearingMode by viewModel.bearingMode.collectAsState()
     val serverLogs by viewModel.serverLogs.collectAsState()
+    val radarInfo by viewModel.radarInfo.collectAsState()
 
     NavHost(
         navController = navController,
@@ -108,6 +110,7 @@ fun SettingsNavHost(
         composable(SettingsScreen.AppInfo.route) {
             AppInfoScreen(
                 appVersion = viewModel.appVersion,
+                radarInfo = radarInfo,
                 onBack = { navController.popBackStack() },
             )
         }

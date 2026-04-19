@@ -162,6 +162,7 @@ object CapabilitiesMapper {
         val controlType = when (dataType) {
             "enum" -> ControlType.ENUM
             "boolean" -> ControlType.BOOLEAN
+            "string" -> ControlType.STRING
             else -> ControlType.RANGE_SLIDER
         }
 
@@ -193,10 +194,19 @@ object CapabilitiesMapper {
         val result = mutableMapOf<String, ControlValue>()
         json.keys().forEach { key ->
             val obj = json.optJSONObject(key) ?: return@forEach
-            result[key] = ControlValue(
-                value = obj.optDouble("value", 0.0).toFloat(),
-                auto = obj.optBoolean("auto", false),
-            )
+            val rawValue = obj.opt("value")
+            if (rawValue is String) {
+                result[key] = ControlValue(
+                    value = 0f,
+                    auto = obj.optBoolean("auto", false),
+                    stringValue = rawValue,
+                )
+            } else {
+                result[key] = ControlValue(
+                    value = obj.optDouble("value", 0.0).toFloat(),
+                    auto = obj.optBoolean("auto", false),
+                )
+            }
         }
         return result
     }
@@ -206,4 +216,5 @@ object CapabilitiesMapper {
 data class ControlValue(
     val value: Float,
     val auto: Boolean = false,
+    val stringValue: String? = null,
 )

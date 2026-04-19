@@ -1,11 +1,8 @@
 package com.marineyachtradar.mayara.ui.radar.overlay
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -25,11 +22,9 @@ import com.marineyachtradar.mayara.data.model.NavigationData
 fun HudOverlay(
     navigationData: NavigationData?,
     connectionLabel: String = "",
-    radarName: String = "",
-    onRadarNameTapped: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    if (connectionLabel.isBlank() && radarName.isBlank() && navigationData == null) return
+    if (connectionLabel.isBlank() && navigationData == null) return
 
     Column(modifier = modifier.padding(12.dp)) {
         if (connectionLabel.isNotBlank()) {
@@ -38,22 +33,6 @@ fun HudOverlay(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
             )
-        }
-        if (radarName.isNotBlank()) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                modifier = Modifier
-                    .padding(vertical = 4.dp)
-                    .clickable { onRadarNameTapped() },
-            ) {
-                Text(
-                    text = radarName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                )
-            }
         }
         navigationData?.headingDeg?.let { heading ->
             HudRow(label = "HDG", value = "%.1f°".format(heading))

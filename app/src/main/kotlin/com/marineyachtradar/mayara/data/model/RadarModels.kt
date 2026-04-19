@@ -85,7 +85,7 @@ data class ControlDefinition(
     val options: List<String> = emptyList(),
 )
 
-enum class ControlType { RANGE_SLIDER, ENUM, BOOLEAN }
+enum class ControlType { RANGE_SLIDER, ENUM, BOOLEAN, STRING }
 
 // ---------------------------------------------------------------------------
 // Spoke data (decoded from RadarMessage protobuf)

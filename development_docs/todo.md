@@ -155,7 +155,7 @@ See `development_docs/bugfix_spec.md` for root-cause analysis, fix specification
 Improvements
 - [x] in portrait scale down so the whole circle is visible
 - [x] add units at the range circles
-- [ ] the range plus/minus needs to jump only through the units that are based on the selected unit of measure, so in the KM, it goes through the km ranges, in NM it goes through the NM ranges
+- [x] the range plus/minus needs to jump only through the units that are based on the selected unit of measure, so in the KM, it goes through the km ranges, in NM it goes through the NM ranges
 - [x] the name of the radar can be in a pill
 - [x] add lines for the compas and indicate the direction similar to the range units
 - [ ] in portrait mode, if the size is wide enough put the visual controls (gain sea clutter etc) on the right side of the screen, moving the radar to the left instead of having the visual controls overlapping the radar
@@ -163,6 +163,25 @@ Improvements
 - [x] use server-provided colour legend for accurate radar spoke colours (was hardcoded green)
 - [x] transparent background for no-return areas (legend index 0)
  
+
+- [x] improve the app info screen
+- [x] make section on the top of the screen and show the app logo there
+  - [x] show the operating time and the transmit time. 
+  - [x] Fix the app licecnce. 
+  - [x] Operating time
+- [x] add  Model name
+- [x] add  Serial Number
+- [x] add the spokes & spoke lenght  
+- [x] add nice readme, explaining what the application is doing (showing the radar of mutliple brands) of the app and add 2 screenshots, one witht he connection screen (already there) and one with a radar working. the readme is more  of a mini usermanual, it does not need to explain the technical details in much details.
+- [x] put the name of the device 
+
+- [x] after all spokes are   fully rendered it seems they never disapear and provide a new refershed radar image
+- [x] the app does not show the updated range that the server is providing. it remains static
+- [x] The UI is not looking modern and nice, improve the icons used esp for the range changing. The setting icon is not nicely aligned and sized. 
+- [x] the name is at strange location
+
+
+
 
 
 

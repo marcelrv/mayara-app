@@ -1,14 +1,21 @@
 package com.marineyachtradar.mayara.ui.radar
 
 import android.content.Intent
+import android.content.res.Configuration
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +33,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,6 +44,7 @@ import com.marineyachtradar.mayara.ui.connection.ConnectionPickerDialog
 import com.marineyachtradar.mayara.ui.radar.bottomsheet.RadarControlSheet
 import com.marineyachtradar.mayara.ui.radar.overlay.HudOverlay
 import com.marineyachtradar.mayara.ui.radar.overlay.PowerToggle
+import com.marineyachtradar.mayara.ui.radar.overlay.RadarNamePill
 import com.marineyachtradar.mayara.ui.radar.overlay.RadarPickerDialog
 import com.marineyachtradar.mayara.ui.radar.overlay.RangeControls
 import com.marineyachtradar.mayara.ui.settings.SettingsActivity
@@ -63,6 +72,7 @@ fun RadarScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val latestSpoke by viewModel.spokeFlow.collectAsState()
+    val revolutionCount by viewModel.revolutionCount.collectAsState()
     val showControlSheet by viewModel.showControlSheet.collectAsState()
     val showConnectionPicker by viewModel.showConnectionPicker.collectAsState()
     val showRadarPicker by viewModel.showRadarPicker.collectAsState()
@@ -82,20 +92,119 @@ fun RadarScreen(
     val ranges = (uiState as? RadarUiState.Connected)?.capabilities?.ranges ?: emptyList()
     val currentRangeIndex = (uiState as? RadarUiState.Connected)?.currentRangeIndex ?: 0
     val context = LocalContext.current
+    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
 
+    if (isPortrait) {
+        PortraitRadarLayout(
+            viewModel = viewModel,
+            uiState = uiState,
+            latestSpoke = latestSpoke,
+            revolutionCount = revolutionCount,
+            spokesPerRevolution = spokesPerRevolution,
+            palette = palette,
+            legend = legend,
+            navigationData = navigationData,
+            connectionLabel = connectionLabel,
+            radarName = radarName,
+            ranges = ranges,
+            currentRangeIndex = currentRangeIndex,
+            distanceUnit = distanceUnit,
+            context = context,
+        )
+    } else {
+        LandscapeRadarLayout(
+            viewModel = viewModel,
+            uiState = uiState,
+            latestSpoke = latestSpoke,
+            revolutionCount = revolutionCount,
+            spokesPerRevolution = spokesPerRevolution,
+            palette = palette,
+            legend = legend,
+            navigationData = navigationData,
+            connectionLabel = connectionLabel,
+            radarName = radarName,
+            ranges = ranges,
+            currentRangeIndex = currentRangeIndex,
+            distanceUnit = distanceUnit,
+            context = context,
+        )
+    }
+
+    // Overlay dialogs (orientation-independent)
+    // Layer 5: Advanced radar control bottom sheet (spec §3.4)
+    if (showControlSheet) {
+        val connected = uiState as? RadarUiState.Connected
+        if (connected != null) {
+            RadarControlSheet(
+                controls = connected.controls,
+                onGainChange = { v, auto -> viewModel.onGainChange(v, auto) },
+                onSeaChange = { v, auto -> viewModel.onSeaChange(v, auto) },
+                onRainChange = { v -> viewModel.onRainChange(v) },
+                onInterferenceChange = { idx -> viewModel.onInterferenceChange(idx) },
+                onPaletteChange = { viewModel.onPaletteChange(it) },
+                onOrientationChange = { viewModel.onOrientationChange(it) },
+                onDismiss = { viewModel.onDismissControlSheet() },
+            )
+        }
+    }
+
+    // Layer 6: Connection picker dialog (spec §2)
+    if (showConnectionPicker) {
+        val lastHost by viewModel.lastNetworkHost.collectAsState()
+        val lastPort by viewModel.lastNetworkPort.collectAsState()
+        val discoveredServers by viewModel.discoveredServers.collectAsState()
+
+        ConnectionPickerDialog(
+            discoveredServers = discoveredServers,
+            initialHost = lastHost,
+            initialPort = lastPort,
+            onConnect = { mode, remember ->
+                viewModel.onConnect(mode, remember)
+            },
+            onDismiss = { viewModel.onDismissConnectionPicker() },
+        )
+    }
+
+    // Layer 7: Radar picker dialog (BF-05)
+    if (showRadarPicker) {
+        RadarPickerDialog(
+            radars = availableRadars,
+            currentRadarId = currentRadarId,
+            onSelect = { viewModel.onSwitchRadar(it) },
+            onDismiss = { viewModel.onDismissRadarPicker() },
+        )
+    }
+}
+
+// ── Landscape layout: overlaid controls on top of full-screen radar ──
+
+@Composable
+private fun LandscapeRadarLayout(
+    viewModel: RadarViewModel,
+    uiState: RadarUiState,
+    latestSpoke: com.marineyachtradar.mayara.data.model.SpokeData?,
+    revolutionCount: Long,
+    spokesPerRevolution: Int,
+    palette: ColorPalette,
+    legend: com.marineyachtradar.mayara.data.model.RadarLegend?,
+    navigationData: com.marineyachtradar.mayara.data.model.NavigationData?,
+    connectionLabel: String,
+    radarName: String,
+    ranges: List<Int>,
+    currentRangeIndex: Int,
+    distanceUnit: DistanceUnit,
+    context: android.content.Context,
+) {
     Box(modifier = Modifier.fillMaxSize()) {
-
-        // Layer 0: OpenGL radar canvas (Phase 3)
         RadarGLView(
             latestSpoke = latestSpoke,
             spokesPerRevolution = spokesPerRevolution,
             palette = palette,
             legend = legend,
             powerState = (uiState as? RadarUiState.Connected)?.powerState,
+            revolutionCount = revolutionCount,
             modifier = Modifier.fillMaxSize(),
         )
-
-        // Layer 0b: Compass rose + range labels overlay
         RadarOverlayCanvas(
             ranges = ranges,
             currentRangeIndex = currentRangeIndex,
@@ -103,7 +212,7 @@ fun RadarScreen(
             modifier = Modifier.fillMaxSize(),
         )
 
-        // Layer 1: Settings gear icon + HUD (top-left, always visible)
+        // Top-left: settings gear + HUD
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -111,31 +220,35 @@ fun RadarScreen(
         ) {
             IconButton(
                 onClick = {
-                    context.startActivity(
-                        Intent(context, SettingsActivity::class.java)
-                    )
+                    context.startActivity(Intent(context, SettingsActivity::class.java))
                 },
+                modifier = Modifier.size(56.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Settings,
                     contentDescription = "Settings",
                     tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp),
                 )
             }
-            HudOverlay(
-                navigationData = navigationData,
-                connectionLabel = connectionLabel,
+            HudOverlay(navigationData = navigationData, connectionLabel = connectionLabel)
+        }
+
+        // Top-center: radar name pill
+        if (radarName.isNotBlank()) {
+            RadarNamePill(
                 radarName = radarName,
-                onRadarNameTapped = { viewModel.onRadarNameTapped() },
+                onTapped = { viewModel.onRadarNameTapped() },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 8.dp),
             )
         }
 
         when (uiState) {
             is RadarUiState.Connected -> {
                 val connected = uiState as RadarUiState.Connected
-
-
-                // Layer 2: Power toggle (top-right)
                 PowerToggle(
                     powerState = connected.powerState,
                     onPowerAction = { viewModel.onPowerAction(it) },
@@ -143,8 +256,6 @@ fun RadarScreen(
                         .align(Alignment.TopEnd)
                         .windowInsetsPadding(WindowInsets.statusBars),
                 )
-
-                // Layer 3: Range controls (bottom-right)
                 RangeControls(
                     ranges = connected.capabilities.ranges,
                     currentIndex = connected.currentRangeIndex,
@@ -155,8 +266,6 @@ fun RadarScreen(
                         .align(Alignment.BottomEnd)
                         .windowInsetsPadding(WindowInsets.navigationBars),
                 )
-
-                // Layer 4: Radar settings FAB (bottom-center, spec §3.4)
                 FloatingActionButton(
                     onClick = { viewModel.onShowControlSheet() },
                     shape = RoundedCornerShape(16.dp),
@@ -167,13 +276,9 @@ fun RadarScreen(
                         .windowInsetsPadding(WindowInsets.navigationBars)
                         .padding(bottom = 16.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Tune,
-                        contentDescription = "Radar Settings",
-                    )
+                    Icon(Icons.Filled.Tune, contentDescription = "Radar Settings")
                 }
             }
-
             is RadarUiState.Loading -> {
                 Column(
                     modifier = Modifier.align(Alignment.Center),
@@ -181,67 +286,153 @@ fun RadarScreen(
                 ) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "Connecting to radar…",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
+                    Text("Connecting to radar…", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyMedium)
                 }
             }
-
             is RadarUiState.Error -> {
-                val error = uiState as RadarUiState.Error
                 Text(
-                    text = "Error: ${error.message}",
+                    text = "Error: ${(uiState as RadarUiState.Error).message}",
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.align(Alignment.Center),
                 )
             }
         }
+    }
+}
 
-        // Layer 5: Advanced radar control bottom sheet (spec §3.4)
-        if (showControlSheet) {
-            val connected = uiState as? RadarUiState.Connected
-            if (connected != null) {
-                RadarControlSheet(
-                    controls = connected.controls,
-                    onGainChange = { v, auto -> viewModel.onGainChange(v, auto) },
-                    onSeaChange = { v, auto -> viewModel.onSeaChange(v, auto) },
-                    onRainChange = { v -> viewModel.onRainChange(v) },
-                    onInterferenceChange = { idx -> viewModel.onInterferenceChange(idx) },
-                    onPaletteChange = { viewModel.onPaletteChange(it) },
-                    onOrientationChange = { viewModel.onOrientationChange(it) },
-                    onDismiss = { viewModel.onDismissControlSheet() },
+// ── Portrait layout: radar square + controls below ──
+
+@Composable
+private fun PortraitRadarLayout(
+    viewModel: RadarViewModel,
+    uiState: RadarUiState,
+    latestSpoke: com.marineyachtradar.mayara.data.model.SpokeData?,
+    revolutionCount: Long,
+    spokesPerRevolution: Int,
+    palette: ColorPalette,
+    legend: com.marineyachtradar.mayara.data.model.RadarLegend?,
+    navigationData: com.marineyachtradar.mayara.data.model.NavigationData?,
+    connectionLabel: String,
+    radarName: String,
+    ranges: List<Int>,
+    currentRangeIndex: Int,
+    distanceUnit: DistanceUnit,
+    context: android.content.Context,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars),
+    ) {
+        // Top bar: settings gear + radar name + power toggle
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = {
+                    context.startActivity(Intent(context, SettingsActivity::class.java))
+                },
+                modifier = Modifier.size(56.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.size(32.dp),
                 )
+            }
+            if (radarName.isNotBlank()) {
+                RadarNamePill(
+                    radarName = radarName,
+                    onTapped = { viewModel.onRadarNameTapped() },
+                )
+            }
+            if (uiState is RadarUiState.Connected) {
+                PowerToggle(
+                    powerState = uiState.powerState,
+                    onPowerAction = { viewModel.onPowerAction(it) },
+                )
+            } else {
+                Spacer(Modifier.size(48.dp))
             }
         }
 
-        // Layer 6: Connection picker dialog (spec §2)
-        if (showConnectionPicker) {
-            val lastHost by viewModel.lastNetworkHost.collectAsState()
-            val lastPort by viewModel.lastNetworkPort.collectAsState()
-            val discoveredServers by viewModel.discoveredServers.collectAsState()
-            
-            ConnectionPickerDialog(
-                discoveredServers = discoveredServers,
-                initialHost = lastHost,
-                initialPort = lastPort,
-                onConnect = { mode, remember ->
-                    viewModel.onConnect(mode, remember)
-                },
-                onDismiss = { viewModel.onDismissConnectionPicker() },
+        // Radar view (square, centered)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .weight(1f, fill = false),
+        ) {
+            RadarGLView(
+                latestSpoke = latestSpoke,
+                spokesPerRevolution = spokesPerRevolution,
+                palette = palette,
+                legend = legend,
+                powerState = (uiState as? RadarUiState.Connected)?.powerState,
+                revolutionCount = revolutionCount,
+                modifier = Modifier.fillMaxSize(),
             )
+            RadarOverlayCanvas(
+                ranges = ranges,
+                currentRangeIndex = currentRangeIndex,
+                distanceUnit = distanceUnit,
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            when (uiState) {
+                is RadarUiState.Loading -> {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Connecting to radar…", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                is RadarUiState.Error -> {
+                    Text(
+                        text = "Error: ${(uiState as RadarUiState.Error).message}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+                else -> {}
+            }
         }
 
-        // Layer 7: Radar picker dialog (BF-05)
-        if (showRadarPicker) {
-            RadarPickerDialog(
-                radars = availableRadars,
-                currentRadarId = currentRadarId,
-                onSelect = { viewModel.onSwitchRadar(it) },
-                onDismiss = { viewModel.onDismissRadarPicker() },
-            )
+        // Bottom controls bar: HUD + Tune FAB + Range controls
+        if (uiState is RadarUiState.Connected) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                HudOverlay(navigationData = navigationData, connectionLabel = connectionLabel)
+                FloatingActionButton(
+                    onClick = { viewModel.onShowControlSheet() },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ) {
+                    Icon(Icons.Filled.Tune, contentDescription = "Radar Settings")
+                }
+                RangeControls(
+                    ranges = uiState.capabilities.ranges,
+                    currentIndex = uiState.currentRangeIndex,
+                    onRangeUp = { viewModel.onRangeUp() },
+                    onRangeDown = { viewModel.onRangeDown() },
+                    distanceUnit = distanceUnit,
+                )
+            }
         }
     }
 }

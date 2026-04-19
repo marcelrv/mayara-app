@@ -59,6 +59,10 @@ class RadarRepository(
     private val _spokeFlow = MutableStateFlow<SpokeData?>(null)
     val spokeFlow: StateFlow<SpokeData?> = _spokeFlow.asStateFlow()
 
+    /** Incremented each time a full revolution is detected (spoke angle wraps). */
+    private val _revolutionCount = MutableStateFlow(0L)
+    val revolutionCount: StateFlow<Long> = _revolutionCount.asStateFlow()
+
     private var connectJob: Job? = null
     private var retryJob: Job? = null
     private var activeStreamJob: Job? = null
@@ -126,6 +130,21 @@ class RadarRepository(
                     navigationData = null,
                 )
 
+                // Update the app-wide radar info snapshot for Settings screens
+                RadarInfoHolder.update(
+                    RadarInfoSnapshot(
+                        radarName = radar.name,
+                        brand = radar.brand,
+                        modelName = controlValues["modelName"]?.stringValue,
+                        serialNumber = controlValues["serialNumber"]?.stringValue,
+                        firmwareVersion = controlValues["firmwareVersion"]?.stringValue,
+                        spokesPerRevolution = capabilities.spokesPerRevolution,
+                        maxSpokeLength = capabilities.maxSpokeLength,
+                        operatingTimeSeconds = controlValues["operatingTime"]?.value?.takeIf { it > 0 },
+                        transmitTimeSeconds = controlValues["transmitTime"]?.value?.takeIf { it > 0 },
+                    )
+                )
+
                 // 5. Subscribe to spoke stream (drives GL renderer)
                 launchSpokeStream(radar)
 
@@ -180,6 +199,20 @@ class RadarRepository(
                     navigationData = null,
                 )
 
+                RadarInfoHolder.update(
+                    RadarInfoSnapshot(
+                        radarName = radar.name,
+                        brand = radar.brand,
+                        modelName = controlValues["modelName"]?.stringValue,
+                        serialNumber = controlValues["serialNumber"]?.stringValue,
+                        firmwareVersion = controlValues["firmwareVersion"]?.stringValue,
+                        spokesPerRevolution = capabilities.spokesPerRevolution,
+                        maxSpokeLength = capabilities.maxSpokeLength,
+                        operatingTimeSeconds = controlValues["operatingTime"]?.value?.takeIf { it > 0 },
+                        transmitTimeSeconds = controlValues["transmitTime"]?.value?.takeIf { it > 0 },
+                    )
+                )
+
                 launchSpokeStream(radar)
 
                 val streamUrl = baseUrl.replace("http://", "ws://")
@@ -206,6 +239,7 @@ class RadarRepository(
         activeSpokeJob = null
         currentRadarId = null
         _uiState.value = RadarUiState.Loading
+        RadarInfoHolder.clear()
     }
 
     // ------------------------------------------------------------------
@@ -331,10 +365,12 @@ class RadarRepository(
                 // Throttled: only once per full revolution (when angle wraps around).
                 if (spoke.rangeMetres > 0 && (lastRangeUpdateAngle < 0 || spoke.angle < lastRangeUpdateAngle)) {
                     lastRangeUpdateAngle = spoke.angle
+                    // Signal a new revolution so the GL renderer can clear stale data
+                    _revolutionCount.value++
                     val state = _uiState.value as? RadarUiState.Connected ?: return@onEach
                     val received = spoke.rangeMetres
                     val idx = state.capabilities.ranges.indexOfFirst {
-                        Math.abs(it - received) <= maxOf(1, (it * 0.02).toInt())
+                        Math.abs(it - received) <= maxOf(1, (it * 0.05).toInt())
                     }
                     if (idx >= 0 && idx != state.currentRangeIndex) {
                         _uiState.value = state.copy(currentRangeIndex = idx)
@@ -366,9 +402,14 @@ class RadarRepository(
             "range" -> {
                 val received = update.value.toInt()
                 val idx = state.capabilities.ranges.indexOfFirst {
-                    Math.abs(it - received) <= maxOf(1, (it * 0.02).toInt())
+                    Math.abs(it - received) <= maxOf(1, (it * 0.05).toInt())
                 }
                 if (idx >= 0) _uiState.value = state.copy(currentRangeIndex = idx)
+            }
+            "interferenceRejection" -> {
+                _uiState.value = state.copy(
+                    controls = state.controls.withEnum(update.controlId, update.value.toInt())
+                )
             }
             else -> {
                 _uiState.value = state.copy(

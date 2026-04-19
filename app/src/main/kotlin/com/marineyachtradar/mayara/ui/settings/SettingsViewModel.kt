@@ -8,6 +8,8 @@ import com.marineyachtradar.mayara.data.model.BearingMode
 import com.marineyachtradar.mayara.data.model.ConnectionMode
 import com.marineyachtradar.mayara.data.model.DistanceUnit
 import com.marineyachtradar.mayara.domain.ConnectionManager
+import com.marineyachtradar.mayara.domain.RadarInfoHolder
+import com.marineyachtradar.mayara.domain.RadarInfoSnapshot
 import com.marineyachtradar.mayara.domain.UnitsPreferences
 import com.marineyachtradar.mayara.domain.mayaraDataStore
 import com.marineyachtradar.mayara.jni.RadarJni
@@ -40,6 +42,9 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     /** App version string from [BuildConfig.VERSION_NAME] (e.g. "0.1.0"). */
     val appVersion: String = BuildConfig.VERSION_NAME
+
+    /** Radar info snapshot for the App Info screen. */
+    val radarInfo: StateFlow<RadarInfoSnapshot?> = RadarInfoHolder.radarInfo
 
     // ------------------------------------------------------------------
     // Connection state

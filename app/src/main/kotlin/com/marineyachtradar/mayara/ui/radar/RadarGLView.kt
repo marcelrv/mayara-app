@@ -38,6 +38,7 @@ fun RadarGLView(
     palette: ColorPalette,
     legend: RadarLegend? = null,
     powerState: PowerState? = null,
+    revolutionCount: Long = 0L,
     modifier: Modifier = Modifier,
 ) {
     val renderer = remember { RadarGLRenderer() }
@@ -45,6 +46,13 @@ fun RadarGLView(
     // Clear the radar texture when power transitions away from TRANSMIT
     LaunchedEffect(powerState) {
         if (powerState != null && powerState != PowerState.TRANSMIT) {
+            renderer.clearAll()
+        }
+    }
+
+    // Clear stale spoke data at the start of each new revolution
+    LaunchedEffect(revolutionCount) {
+        if (revolutionCount > 0) {
             renderer.clearAll()
         }
     }

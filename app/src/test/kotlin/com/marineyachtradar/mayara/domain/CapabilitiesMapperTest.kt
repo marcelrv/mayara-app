@@ -232,6 +232,38 @@ class CapabilitiesMapperTest {
         assertTrue(values.isEmpty())
     }
 
+    @Test
+    fun `parseControlValues parses string control values`() {
+        val json = JSONObject(
+            """
+            {
+              "firmwareVersion": { "value": "1.23.0" },
+              "serialNumber": { "value": "SN-12345" }
+            }
+            """.trimIndent()
+        )
+
+        val values = CapabilitiesMapper.parseControlValues(json)
+
+        assertEquals("1.23.0", values["firmwareVersion"]!!.stringValue)
+        assertEquals("SN-12345", values["serialNumber"]!!.stringValue)
+    }
+
+    @Test
+    fun `parseCapabilities maps string dataType to STRING`() {
+        val json = capabilitiesJson(
+            controls = """
+            "firmwareVersion": { "id": "firmwareVersion", "name": "Firmware Version", "dataType": "string" }
+            """
+        )
+
+        val caps = CapabilitiesMapper.parseCapabilities("r1", json)
+
+        val fwDef = caps.controls["firmwareVersion"]
+        assertNotNull(fwDef)
+        assertEquals(ControlType.STRING, fwDef!!.type)
+    }
+
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------

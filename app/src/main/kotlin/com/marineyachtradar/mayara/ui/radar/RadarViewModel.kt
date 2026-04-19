@@ -138,6 +138,9 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     /** Exposed so the GL renderer can subscribe to spoke data. */
     val spokeFlow = repository.spokeFlow
 
+    /** Revolution counter — incremented each full sweep so GL can clear stale data. */
+    val revolutionCount = repository.revolutionCount
+
     /** All radars discovered on the connected server. */
     val availableRadars: StateFlow<List<com.marineyachtradar.mayara.data.model.RadarInfo>> = repository.availableRadars
 
@@ -344,23 +347,26 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
     // ------------------------------------------------------------------
 
     /**
-     * Zoom in: step to the next smaller range (lower index in capabilities.ranges).
+     * Zoom in: step to the next smaller range that is a "round" value for the selected unit.
      */
     fun onRangeUp() {
         val state = uiState.value as? RadarUiState.Connected ?: return
-        val nextIndex = (state.currentRangeIndex - 1).coerceAtLeast(0)
+        val nextIndex = com.marineyachtradar.mayara.ui.radar.overlay.RangeStepper.findNextRoundRange(
+            state.capabilities.ranges, state.currentRangeIndex, -1, distanceUnit.value
+        )
         if (nextIndex != state.currentRangeIndex) {
             repository.setRangeIndex(nextIndex)
         }
     }
 
     /**
-     * Zoom out: step to the next larger range (higher index in capabilities.ranges).
+     * Zoom out: step to the next larger range that is a "round" value for the selected unit.
      */
     fun onRangeDown() {
         val state = uiState.value as? RadarUiState.Connected ?: return
-        val nextIndex = (state.currentRangeIndex + 1)
-            .coerceAtMost(state.capabilities.ranges.lastIndex)
+        val nextIndex = com.marineyachtradar.mayara.ui.radar.overlay.RangeStepper.findNextRoundRange(
+            state.capabilities.ranges, state.currentRangeIndex, +1, distanceUnit.value
+        )
         if (nextIndex != state.currentRangeIndex) {
             repository.setRangeIndex(nextIndex)
         }
