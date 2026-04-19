@@ -2,13 +2,14 @@
 //!
 //! # Overview
 //!
-//! This crate exposes three JNI functions called from `RadarJni.kt`:
+//! This crate exposes four JNI functions called from `RadarJni.kt`:
 //!
-//! | Kotlin method        | Rust function             | Description                          |
-//! |----------------------|---------------------------|--------------------------------------|
-//! | `nativeStart()`      | `Java_..._nativeStart`    | Create Tokio runtime, start server   |
-//! | `nativeStop()`       | `Java_..._nativeStop`     | Graceful shutdown, drop runtime      |
-//! | `nativeGetLogs()`    | `Java_..._nativeGetLogs`  | Return buffered log lines as String  |
+//! | Kotlin method              | Rust function                   | Description                          |
+//! |----------------------------|---------------------------------|--------------------------------------|
+//! | `nativeStart()`            | `Java_..._nativeStart`          | Create Tokio runtime, start server   |
+//! | `nativeStop()`             | `Java_..._nativeStop`           | Graceful shutdown, drop runtime      |
+//! | `nativeGetLogs()`          | `Java_..._nativeGetLogs`        | Return buffered log lines as String  |
+//! | `nativeGetServerVersion()` | `Java_..._nativeGetServerVersion` | Return embedded server version       |
 //!
 //! # Architecture
 //!
@@ -287,6 +288,25 @@ pub extern "system" fn Java_com_marineyachtradar_mayara_jni_RadarJni_nativeGetLo
     };
 
     env.new_string(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
+}
+
+// ---------------------------------------------------------------------------
+// JNI: nativeGetServerVersion(): String
+// ---------------------------------------------------------------------------
+
+/// Return the embedded mayara-server version string.
+/// Returns the version from the mayara crate's Cargo.toml.
+///
+/// # Safety
+/// Called from the JVM.
+#[no_mangle]
+pub extern "system" fn Java_com_marineyachtradar_mayara_jni_RadarJni_nativeGetServerVersion<'local>(
+    env: JNIEnv<'local>,
+    _class: JClass<'local>,
+) -> jstring {
+    env.new_string(mayara::VERSION)
         .map(|s| s.into_raw())
         .unwrap_or(std::ptr::null_mut())
 }

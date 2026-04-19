@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -331,14 +330,34 @@ private fun PortraitRadarLayout(
     panState: RadarPanState,
     context: android.content.Context,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.statusBars),
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        RadarGLView(
+            latestSpoke = latestSpoke,
+            spokesPerRevolution = spokesPerRevolution,
+            palette = palette,
+            legend = legend,
+            powerState = (uiState as? RadarUiState.Connected)?.powerState,
+            revolutionCount = revolutionCount,
+            currentRangeIndex = currentRangeIndex,
+            panState = panState,
+            modifier = Modifier.fillMaxSize(),
+        )
+        RadarOverlayCanvas(
+            ranges = ranges,
+            currentRangeIndex = currentRangeIndex,
+            distanceUnit = distanceUnit,
+            panX = panState.x,
+            panY = panState.y,
+            zoomLevel = panState.zoom,
+            modifier = Modifier.fillMaxSize(),
+        )
+
         // Top bar: settings gear + radar name + power toggle
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.TopCenter)
+                .windowInsetsPadding(WindowInsets.statusBars),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -371,82 +390,52 @@ private fun PortraitRadarLayout(
             }
         }
 
-        // Radar view (square, centered)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .weight(1f, fill = false),
-        ) {
-            RadarGLView(
-                latestSpoke = latestSpoke,
-                spokesPerRevolution = spokesPerRevolution,
-                palette = palette,
-                legend = legend,
-                powerState = (uiState as? RadarUiState.Connected)?.powerState,
-                revolutionCount = revolutionCount,
-                currentRangeIndex = currentRangeIndex,
-                panState = panState,
-                modifier = Modifier.fillMaxSize(),
-            )
-            RadarOverlayCanvas(
-                ranges = ranges,
-                currentRangeIndex = currentRangeIndex,
-                distanceUnit = distanceUnit,
-                panX = panState.x,
-                panY = panState.y,
-                zoomLevel = panState.zoom,
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            when (uiState) {
-                is RadarUiState.Loading -> {
-                    Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+        when (uiState) {
+            is RadarUiState.Connected -> {
+                // Bottom controls: HUD + Tune FAB + Range controls
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    HudOverlay(navigationData = navigationData, connectionLabel = connectionLabel)
+                    FloatingActionButton(
+                        onClick = { viewModel.onShowControlSheet() },
+                        shape = RoundedCornerShape(16.dp),
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                        contentColor = MaterialTheme.colorScheme.primary,
                     ) {
-                        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Connecting to radar…", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyMedium)
+                        Icon(Icons.Filled.Tune, contentDescription = "Radar Settings")
                     }
-                }
-                is RadarUiState.Error -> {
-                    Text(
-                        text = "Error: ${(uiState as RadarUiState.Error).message}",
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.align(Alignment.Center),
+                    RangeControls(
+                        ranges = uiState.capabilities.ranges,
+                        currentIndex = uiState.currentRangeIndex,
+                        onRangeUp = { viewModel.onRangeUp() },
+                        onRangeDown = { viewModel.onRangeDown() },
+                        distanceUnit = distanceUnit,
                     )
                 }
-                else -> {}
             }
-        }
-
-        // Bottom controls bar: HUD + Tune FAB + Range controls
-        if (uiState is RadarUiState.Connected) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HudOverlay(navigationData = navigationData, connectionLabel = connectionLabel)
-                FloatingActionButton(
-                    onClick = { viewModel.onShowControlSheet() },
-                    shape = RoundedCornerShape(16.dp),
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                    contentColor = MaterialTheme.colorScheme.primary,
+            is RadarUiState.Loading -> {
+                Column(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Icon(Icons.Filled.Tune, contentDescription = "Radar Settings")
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Connecting to radar…", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.bodyMedium)
                 }
-                RangeControls(
-                    ranges = uiState.capabilities.ranges,
-                    currentIndex = uiState.currentRangeIndex,
-                    onRangeUp = { viewModel.onRangeUp() },
-                    onRangeDown = { viewModel.onRangeDown() },
-                    distanceUnit = distanceUnit,
+            }
+            is RadarUiState.Error -> {
+                Text(
+                    text = "Error: ${(uiState as RadarUiState.Error).message}",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.align(Alignment.Center),
                 )
             }
         }

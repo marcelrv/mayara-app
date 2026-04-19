@@ -118,8 +118,10 @@ fun SettingsNavHost(
         }
 
         composable(SettingsScreen.AppInfo.route) {
+            val serverVersion by viewModel.serverVersion.collectAsState()
             AppInfoScreen(
                 appVersion = viewModel.appVersion,
+                serverVersion = serverVersion,
                 onBack = { navController.popBackStack() },
             )
         }

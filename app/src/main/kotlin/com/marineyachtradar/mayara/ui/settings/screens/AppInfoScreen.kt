@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.marineyachtradar.mayara.R
 
@@ -30,8 +31,11 @@ import com.marineyachtradar.mayara.R
 @Composable
 fun AppInfoScreen(
     appVersion: String,
+    serverVersion: String,
     onBack: () -> Unit,
 ) {
+    val appName = stringResource(R.string.app_name)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -58,12 +62,12 @@ fun AppInfoScreen(
                 Spacer(Modifier.height(16.dp))
                 Image(
                     painter = painterResource(id = R.drawable.ic_launcher_foreground),
-                    contentDescription = "Mayara App Icon",
+                    contentDescription = "App Icon",
                     modifier = Modifier.size(80.dp),
                 )
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    text = "Mayara",
+                    text = appName,
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 Spacer(Modifier.height(4.dp))
@@ -81,8 +85,15 @@ fun AppInfoScreen(
             }
             item {
                 ListItem(
-                    headlineContent = { Text("Version") },
+                    headlineContent = { Text("App Version") },
                     trailingContent = { Text(appVersion) },
+                )
+                HorizontalDivider()
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text("Server Version") },
+                    trailingContent = { Text(serverVersion.takeIf { it.isNotEmpty() } ?: "N/A") },
                 )
                 HorizontalDivider()
             }

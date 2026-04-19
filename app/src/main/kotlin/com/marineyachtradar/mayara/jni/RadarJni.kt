@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
  *   Java_com_marineyachtradar_mayara_jni_RadarJni_nativeStart
  *   Java_com_marineyachtradar_mayara_jni_RadarJni_nativeStop
  *   Java_com_marineyachtradar_mayara_jni_RadarJni_nativeGetLogs
+ *   Java_com_marineyachtradar_mayara_jni_RadarJni_nativeGetServerVersion
  */
 object RadarJni {
 
@@ -46,6 +47,12 @@ object RadarJni {
      */
     private external fun nativeGetLogs(): String
 
+    /**
+     * Return the embedded mayara-server version string (e.g., "3.5.0-dev").
+     * Returns the version from the mayara crate's Cargo.toml.
+     */
+    private external fun nativeGetServerVersion(): String
+
     // -----------------------------------------------------------------
     // Kotlin convenience wrappers (dispatch to IO)
     // -----------------------------------------------------------------
@@ -67,6 +74,12 @@ object RadarJni {
      */
     suspend fun getLogs(): String =
         withContext(Dispatchers.IO) { nativeGetLogs() }
+
+    /**
+     * Get the embedded mayara-server version. Suspending; switches to [Dispatchers.IO].
+     */
+    suspend fun getServerVersion(): String =
+        withContext(Dispatchers.IO) { nativeGetServerVersion() }
 
     const val DEFAULT_PORT = 6502
 }

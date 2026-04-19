@@ -1,5 +1,6 @@
 package com.marineyachtradar.mayara.ui.radar.overlay
 
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -62,7 +63,7 @@ fun PowerToggle(
         enabled = isEnabled,
         shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(containerColor = containerColor),
-        modifier = modifier.padding(4.dp),
+        modifier = modifier.padding(4.dp).height(32.dp),
     ) {
         Text(
             text = label,

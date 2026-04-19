@@ -3,6 +3,14 @@
 Universal Marine Radar Display for Android is a native Android application that displays marine radar data from supported radar hardware. It connects to a **mayara-server** backend (running
 either as an embedded library or on a remote host) and renders live radar spoke data through OpenGL ES.
 
+## Screenshots
+
+| Radar Display | Display Settings |
+|-------------|-----------------|
+| ![Radar display ](docs/screenshots/radar-targets.jpg) | ![Display settings with controls](docs/screenshots/radar-display-settings.jpg) |
+
+The app displays real-time radar data from supported radar hardware with full range control, gain/sea/rain settings, and multi-radar support.
+
 ## Supported Radar Brands
 
 | Brand | Models |

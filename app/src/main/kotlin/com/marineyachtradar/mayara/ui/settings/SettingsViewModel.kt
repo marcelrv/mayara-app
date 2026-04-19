@@ -43,8 +43,17 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     /** App version string from [BuildConfig.VERSION_NAME] (e.g. "0.1.0"). */
     val appVersion: String = BuildConfig.VERSION_NAME
 
+    /** Embedded mayara server version (fetched from JNI). */
+    private val _serverVersion = MutableStateFlow("")
+    val serverVersion: StateFlow<String> = _serverVersion.asStateFlow()
+
     /** Radar info snapshot for the App Info screen. */
     val radarInfo: StateFlow<RadarInfoSnapshot?> = RadarInfoHolder.radarInfo
+
+    init {
+        // Fetch the embedded server version on initialization
+        refreshServerVersion()
+    }
 
     // ------------------------------------------------------------------
     // Connection state
@@ -126,6 +135,24 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 "[Embedded server not loaded — libradar.so unavailable]\n${t.message}"
             }
             _serverLogs.value = logs
+        }
+    }
+
+    /**
+     * Fetch the embedded server version from [RadarJni] on the IO dispatcher.
+     *
+     * Wrapped in [try/catch][Throwable] because [RadarJni] loads `libradar.so` in its `init`
+     * block — if the library is absent (e.g. debug builds without the .so), accessing `RadarJni`
+     * will throw [UnsatisfiedLinkError] at class initialisation.
+     */
+    private fun refreshServerVersion() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                _serverVersion.value = RadarJni.getServerVersion()
+            } catch (t: Throwable) {
+                // If libradar.so is unavailable, leave it empty or set a default
+                _serverVersion.value = ""
+            }
         }
     }
 
