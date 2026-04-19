@@ -7,6 +7,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.unit.sp
 import com.marineyachtradar.mayara.data.model.DistanceUnit
@@ -34,6 +35,7 @@ fun RadarOverlayCanvas(
     distanceUnit: DistanceUnit,
     panX: Float = 0f,
     panY: Float = 0f,
+    zoomLevel: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
     val currentRange = ranges.getOrNull(currentRangeIndex) ?: 0
@@ -44,9 +46,11 @@ fun RadarOverlayCanvas(
         val cy = size.height / 2f - panY * radarDiameter
         val radius = radarDiameter / 2f
 
-        drawCompassRose(cx, cy, radius)
-        if (currentRange > 0) {
-            drawRangeLabels(cx, cy, radius, currentRange, distanceUnit)
+        scale(zoomLevel, pivot = Offset(cx, cy)) {
+            drawCompassRose(cx, cy, radius)
+            if (currentRange > 0) {
+                drawRangeLabels(cx, cy, radius, currentRange, distanceUnit)
+            }
         }
     }
 }

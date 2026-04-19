@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.marineyachtradar.mayara">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Network access for REST API and WebSocket (both embedded localhost and remote) -->
     <uses-permission android:name="android.permission.INTERNET" />

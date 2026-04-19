@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -382,37 +383,69 @@ class RadarRepository(
     // ------------------------------------------------------------------
 
     private fun launchSpokeStream(radar: RadarInfo) {
-        var lastRangeUpdateAngle = -1
-        activeSpokeJob = spokeClient.connect(radar.spokeDataUrl)
-            .onEach { spoke ->
-                _spokeFlow.value = spoke
-                // Spoke-based range detection: update range if spoke reports a different range.
-                // Throttled: only once per full revolution (when angle wraps around).
-                if (spoke.rangeMetres > 0 && (lastRangeUpdateAngle < 0 || spoke.angle < lastRangeUpdateAngle)) {
-                    lastRangeUpdateAngle = spoke.angle
-                    // Signal a new revolution so the GL renderer can clear stale data
-                    _revolutionCount.value++
-                    val state = _uiState.value as? RadarUiState.Connected ?: return@onEach
-                    val received = spoke.rangeMetres
-                    val idx = state.capabilities.ranges.indexOfFirst {
-                        Math.abs(it - received) <= maxOf(1, (it * 0.05).toInt())
+        activeSpokeJob = scope.launch {
+            var lastRangeUpdateAngle = -1
+            var consecutiveFailures = 0
+            while (isActive) {
+                try {
+                    spokeClient.connect(radar.spokeDataUrl)
+                        .collect { spoke ->
+                            consecutiveFailures = 0
+                            _spokeFlow.value = spoke
+                            if (spoke.rangeMetres > 0 && (lastRangeUpdateAngle < 0 || spoke.angle < lastRangeUpdateAngle)) {
+                                lastRangeUpdateAngle = spoke.angle
+                                _revolutionCount.value++
+                                val state = _uiState.value as? RadarUiState.Connected ?: return@collect
+                                val received = spoke.rangeMetres
+                                val idx = state.capabilities.ranges.indexOfFirst {
+                                    Math.abs(it - received) <= maxOf(1, (it * 0.05).toInt())
+                                }
+                                if (idx >= 0 && idx != state.currentRangeIndex) {
+                                    _uiState.value = state.copy(currentRangeIndex = idx)
+                                }
+                            } else {
+                                lastRangeUpdateAngle = spoke.angle
+                            }
+                        }
+                    // Flow completed normally (server closed connection)
+                    android.util.Log.i("RadarRepository", "Spoke stream completed normally")
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    consecutiveFailures++
+                    android.util.Log.w("RadarRepository",
+                        "Spoke stream failed (attempt $consecutiveFailures): ${e.message}")
+                    if (consecutiveFailures >= 10) {
+                        android.util.Log.e("RadarRepository",
+                            "Spoke stream gave up after $consecutiveFailures retries")
+                        break
                     }
-                    if (idx >= 0 && idx != state.currentRangeIndex) {
-                        _uiState.value = state.copy(currentRangeIndex = idx)
-                    }
-                } else {
-                    lastRangeUpdateAngle = spoke.angle
+                    delay(1_000L)
                 }
             }
-            .catch { /* spoke stream error — silently stop until reconnect */ }
-            .launchIn(scope)
+        }
     }
 
     private fun launchControlStream(radarId: String, streamUrl: String) {
-        activeStreamJob = streamClient.connect(streamUrl)
-            .onEach { update -> applyControlUpdate(radarId, update) }
-            .catch { /* stream error — silently stop; UI shows stale data */ }
-            .launchIn(scope)
+        activeStreamJob = scope.launch {
+            var consecutiveFailures = 0
+            while (isActive) {
+                try {
+                    streamClient.connect(streamUrl)
+                        .collect { update -> applyControlUpdate(radarId, update) }
+                    break
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    consecutiveFailures++
+                    android.util.Log.w("RadarRepository",
+                        "Control stream failed (attempt $consecutiveFailures): ${e.message}")
+                    if (consecutiveFailures >= 10) break
+                    delay(1_000L)
+                }
+            }
+        }
     }
 
     private fun applyControlUpdate(radarId: String, update: ControlUpdate) {

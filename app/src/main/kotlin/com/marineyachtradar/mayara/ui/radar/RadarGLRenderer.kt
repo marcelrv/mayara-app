@@ -48,6 +48,8 @@ class RadarGLRenderer : GLSurfaceView.Renderer {
 
     companion object {
         const val TEXTURE_SIZE = 512
+        const val MIN_ZOOM = 1f
+        const val MAX_ZOOM = 10f
 
         // GLSL ES 1.0 vertex shader — full-screen quad, no projection needed.
         private const val VERTEX_SHADER = """
@@ -66,6 +68,7 @@ uniform vec2 u_Center;       // pan offset in [−0.5..0.5] normalized units
 uniform vec2 u_Resolution;   // viewport size in pixels
 uniform vec4 u_RingColor;    // range ring colour (palette-aware)
 uniform float u_Scale;       // scale factor for portrait mode (≥1.0)
+uniform float u_Zoom;        // visual pinch-zoom factor (≥1.0)
 
 const float PI = 3.14159265;
 const vec4 BACKGROUND = vec4(0.043, 0.047, 0.063, 1.0); // #0B0C10
@@ -81,7 +84,8 @@ void main() {
     // Correct for aspect ratio so the radar circle isn't stretched.
     float aspect = u_Resolution.x / u_Resolution.y;
     // In portrait, scale both axes up so the circle fills the width.
-    vec2 radarPos = vec2(uv.x * aspect, uv.y) * u_Scale - u_Center;
+    // Zoom divides to magnify the view around the current center.
+    vec2 radarPos = (vec2(uv.x * aspect, uv.y) * u_Scale - u_Center) / u_Zoom;
 
     float dist = length(radarPos);
     // Discard fragments outside the radar circle (radius = 0.5 in corrected space).
@@ -141,6 +145,7 @@ void main() {
     private var resolutionUniform = 0
     private var ringColorUniform = 0
     private var scaleUniform = 0
+    private var zoomUniform = 0
     private var radarTexture = 0
     private var paletteTexture = 0
     private var quadVbo = 0
@@ -171,6 +176,9 @@ void main() {
 
     @Volatile
     internal var centerY = 0f
+
+    @Volatile
+    internal var zoomLevel = 1f
 
     // -----------------------------------------------------------------------
     // Palette state
@@ -261,6 +269,16 @@ void main() {
         centerY = 0f
     }
 
+    /** Multiply the current zoom by [scaleFactor], clamping to [MIN_ZOOM]..[MAX_ZOOM]. */
+    fun applyZoom(scaleFactor: Float) {
+        zoomLevel = (zoomLevel * scaleFactor).coerceIn(MIN_ZOOM, MAX_ZOOM)
+    }
+
+    /** Reset zoom to 1× (called on range change). */
+    fun resetZoom() {
+        zoomLevel = 1f
+    }
+
     /** Switch the active colour palette. */
     fun setPalette(palette: ColorPalette) {
         if (activePalette != palette) {
@@ -310,6 +328,7 @@ void main() {
         resolutionUniform = GLES20.glGetUniformLocation(programHandle, "u_Resolution")
         ringColorUniform = GLES20.glGetUniformLocation(programHandle, "u_RingColor")
         scaleUniform     = GLES20.glGetUniformLocation(programHandle, "u_Scale")
+        zoomUniform      = GLES20.glGetUniformLocation(programHandle, "u_Zoom")
 
         // Create and initialise radar texture (all zeros = no signal = black)
         val texHandles = IntArray(2)
@@ -405,6 +424,9 @@ void main() {
         val aspect = viewportWidth.toFloat() / viewportHeight.toFloat()
         val scale = if (aspect < 1f) 1f / aspect else 1f
         GLES20.glUniform1f(scaleUniform, scale)
+
+        // Upload zoom factor
+        GLES20.glUniform1f(zoomUniform, zoomLevel)
 
         // Upload palette-aware ring color
         val rc = ringColorForPalette(activePalette)

@@ -1,31 +1,36 @@
 package com.marineyachtradar.mayara.ui.radar
 
-import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Unit tests confirming that [DisabledPinchZoom] never allows zoom to be applied.
+ * Unit tests for pinch-to-zoom behaviour on [RadarGLRenderer].
  *
- * This is a safety-critical requirement (spec §3.2): the on-screen radar scale must
- * always reflect the hardware-stepped range value from the radar unit itself.
- * Pinch-to-zoom is permanently disabled at the class level.
+ * Zoom is applied via [RadarGLRenderer.applyZoom] and clamped to
+ * [RadarGLRenderer.MIN_ZOOM]..[RadarGLRenderer.MAX_ZOOM].
+ * Zoom resets to 1× on range change via [RadarGLRenderer.resetZoom].
  */
 class PinchZoomDisabledTest {
 
-    private val subject = DisabledPinchZoom()
+    private val renderer = RadarGLRenderer()
 
     @Test
-    fun `shouldApplyScale returns false when factor is greater than 1 (zoom in)`() {
-        assertFalse(subject.shouldApplyScale(1.5f))
+    fun `applyZoom scales zoom level incrementally`() {
+        renderer.applyZoom(2f)
+        assertEquals(2f, renderer.zoomLevel, 0.001f)
+        renderer.applyZoom(1.5f)
+        assertEquals(3f, renderer.zoomLevel, 0.001f)
     }
 
     @Test
-    fun `shouldApplyScale returns false when factor is less than 1 (zoom out)`() {
-        assertFalse(subject.shouldApplyScale(0.5f))
+    fun `applyZoom clamps to maximum zoom`() {
+        renderer.applyZoom(20f)
+        assertEquals(RadarGLRenderer.MAX_ZOOM, renderer.zoomLevel, 0.001f)
     }
 
     @Test
-    fun `shouldApplyScale returns false when factor equals 1 (no change)`() {
-        assertFalse(subject.shouldApplyScale(1.0f))
+    fun `applyZoom clamps to minimum zoom`() {
+        renderer.applyZoom(0.1f)
+        assertEquals(RadarGLRenderer.MIN_ZOOM, renderer.zoomLevel, 0.001f)
     }
 }

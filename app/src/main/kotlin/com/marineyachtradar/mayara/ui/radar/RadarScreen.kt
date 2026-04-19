@@ -64,8 +64,8 @@ import com.marineyachtradar.mayara.ui.settings.SettingsActivity
  *
  * Gesture rules:
  *  - Single-finger drag → pan radar center
- *  - Double-tap → reset pan to center
- *  - Pinch gesture → **discarded** (zoom via range buttons only; see spec §3.2)
+ *  - Double-tap → reset pan and zoom to center
+ *  - Pinch gesture → visual zoom (resets on range change)
  */
 @Composable
 fun RadarScreen(
@@ -208,6 +208,7 @@ private fun LandscapeRadarLayout(
             legend = legend,
             powerState = (uiState as? RadarUiState.Connected)?.powerState,
             revolutionCount = revolutionCount,
+            currentRangeIndex = currentRangeIndex,
             panState = panState,
             modifier = Modifier.fillMaxSize(),
         )
@@ -217,6 +218,7 @@ private fun LandscapeRadarLayout(
             distanceUnit = distanceUnit,
             panX = panState.x,
             panY = panState.y,
+            zoomLevel = panState.zoom,
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -383,6 +385,7 @@ private fun PortraitRadarLayout(
                 legend = legend,
                 powerState = (uiState as? RadarUiState.Connected)?.powerState,
                 revolutionCount = revolutionCount,
+                currentRangeIndex = currentRangeIndex,
                 panState = panState,
                 modifier = Modifier.fillMaxSize(),
             )
@@ -392,6 +395,7 @@ private fun PortraitRadarLayout(
                 distanceUnit = distanceUnit,
                 panX = panState.x,
                 panY = panState.y,
+                zoomLevel = panState.zoom,
                 modifier = Modifier.fillMaxSize(),
             )
 

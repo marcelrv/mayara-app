@@ -19,14 +19,20 @@ import com.marineyachtradar.mayara.data.model.RadarLegend
 import com.marineyachtradar.mayara.data.model.SpokeData
 
 /**
- * Holds the current pan offset so that both the GL renderer and the Compose overlay
- * can track the radar centre position.
+ * Holds the current pan offset and zoom level so that both the GL renderer
+ * and the Compose overlay can track the radar view state.
  */
 class RadarPanState {
     var x by mutableFloatStateOf(0f)
-        internal set
     var y by mutableFloatStateOf(0f)
-        internal set
+    var zoom by mutableFloatStateOf(1f)
+
+    /** Reset pan and zoom to defaults (called on range change). */
+    fun reset() {
+        x = 0f
+        y = 0f
+        zoom = 1f
+    }
 }
 
 @Composable
@@ -37,6 +43,7 @@ fun RadarGLView(
     legend: RadarLegend? = null,
     powerState: PowerState? = null,
     revolutionCount: Long = 0L,
+    currentRangeIndex: Int = 0,
     panState: RadarPanState? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -48,9 +55,12 @@ fun RadarGLView(
         }
     }
 
-    // Revolution count is tracked but no longer triggers clearAll().
-    // Each spoke naturally overwrites the previous data at the same angle,
-    // producing the classic radar sweep appearance.
+    // Reset pan and zoom when range changes so the full new range is visible.
+    LaunchedEffect(currentRangeIndex) {
+        renderer.resetCenter()
+        renderer.resetZoom()
+        panState?.reset()
+    }
 
     LaunchedEffect(legend) {
         renderer.setLegendPalette(legend)
@@ -97,17 +107,21 @@ internal fun createGLSurfaceView(
 
         override fun onDoubleTap(e: MotionEvent): Boolean {
             renderer.resetCenter()
-            panState?.let {
-                it.x = 0f
-                it.y = 0f
-            }
+            renderer.resetZoom()
+            panState?.reset()
             return true
         }
     })
 
-    // Pinch zoom is DISCARDED per spec §3.2. The DisabledPinchZoom listener
-    // consumes the scale events but never applies the scale factor to the renderer.
-    val scaleDetector = ScaleGestureDetector(context, DisabledPinchZoom())
+    // Pinch-to-zoom: magnifies the radar view around the current center.
+    // Zoom resets to 1× on range change (handled by LaunchedEffect in RadarGLView).
+    val scaleDetector = ScaleGestureDetector(context, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        override fun onScale(detector: ScaleGestureDetector): Boolean {
+            renderer.applyZoom(detector.scaleFactor)
+            panState?.let { it.zoom = renderer.zoomLevel }
+            return true
+        }
+    })
 
     glView.setOnTouchListener { _, event ->
         // Feed both detectors; both consume the event.
@@ -117,37 +131,4 @@ internal fun createGLSurfaceView(
     }
 
     return glView
-}
-
-// ---------------------------------------------------------------------------
-// Pinch zoom policy (named class — directly unit-testable)
-// ---------------------------------------------------------------------------
-
-/**
- * Scale gesture listener that **discards all pinch events**.
- *
- * This is a safety-critical requirement (spec §3.2): zooming must only be
- * possible via the hardware-stepped [+/-] buttons to ensure the on-screen scale
- * exactly reflects the radar's active range.
- *
- * The listener is registered so that pinch events are properly consumed
- * (returning `true` from [onScale]) and do not leak through to other handlers.
- * The scale factor is intentionally never read or applied.
- */
-class DisabledPinchZoom : ScaleGestureDetector.SimpleOnScaleGestureListener() {
-
-    /**
-     * Returns `true` to consume the scale event. The [detector]'s scale factor
-     * is never applied — pinch-to-zoom is unconditionally disabled.
-     */
-    override fun onScale(detector: ScaleGestureDetector): Boolean {
-        // Intentionally do nothing with detector.scaleFactor.
-        return true  // consumed — must not propagate to other handlers
-    }
-
-    /**
-     * Returns `false` to confirm we do NOT want zoom to be applied.
-     * Exposed for unit testing via [shouldApplyScale].
-     */
-    fun shouldApplyScale(@Suppress("UNUSED_PARAMETER") factor: Float): Boolean = false
 }

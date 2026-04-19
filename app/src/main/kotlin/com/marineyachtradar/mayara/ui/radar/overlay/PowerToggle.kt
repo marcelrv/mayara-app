@@ -62,14 +62,14 @@ fun PowerToggle(
         enabled = isEnabled,
         shape = RoundedCornerShape(50),
         colors = ButtonDefaults.buttonColors(containerColor = containerColor),
-        modifier = modifier.padding(12.dp),
+        modifier = modifier.padding(4.dp),
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge.copy(
-                fontSize = 14.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.5.sp,
+                letterSpacing = 1.sp,
             ),
         )
     }
