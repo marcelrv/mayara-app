@@ -153,6 +153,8 @@ data class ControlsState(
     val interferenceRejection: EnumControlState?,
     val palette: ColorPalette,
     val orientation: RadarOrientation,
+    /** Fill angular gaps between received spokes by repeating spoke data. Default on. */
+    val spokeGapFill: Boolean = true,
 )
 
 data class SliderControlState(

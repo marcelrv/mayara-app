@@ -15,6 +15,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -49,11 +50,12 @@ fun RadarControlSheet(
     onInterferenceChange: (index: Int) -> Unit,
     onPaletteChange: (ColorPalette) -> Unit,
     onOrientationChange: (RadarOrientation) -> Unit,
+    onSpokeGapFillChange: (Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
     ) {
         Column(
@@ -135,6 +137,34 @@ fun RadarControlSheet(
                         label = { Text(orientationDisplayName(orientation)) },
                     )
                 }
+            }
+
+            SheetDivider()
+
+            // ---- View Settings -----------------------------------------
+            SheetSectionLabel("View Settings")
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        text = "Spoke gap fill",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "Repeats spokes to fill angular gaps",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = controls.spokeGapFill,
+                    onCheckedChange = onSpokeGapFillChange,
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

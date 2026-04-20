@@ -18,8 +18,12 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
@@ -68,9 +72,17 @@ class RadarRepository(
     /** Observed by all Compose screens. Starts as [RadarUiState.Loading]. */
     val uiState: StateFlow<RadarUiState> = _uiState.asStateFlow()
 
-    /** Emits [SpokeData] objects for consumption by the GL renderer. */
-    private val _spokeFlow = MutableStateFlow<SpokeData?>(null)
-    val spokeFlow: StateFlow<SpokeData?> = _spokeFlow.asStateFlow()
+    /** Emits [SpokeData] objects for consumption by the GL renderer.
+     *
+     * Uses [MutableSharedFlow] with a large buffer so that every spoke is delivered
+     * even under backpressure. [BufferOverflow.DROP_OLDEST] prevents unbounded growth
+     * when the consumer (GL thread) is temporarily slower than the radar feed.
+     */
+    private val _spokeFlow = MutableSharedFlow<SpokeData>(
+        extraBufferCapacity = 8192,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val spokeFlow: SharedFlow<SpokeData> = _spokeFlow.asSharedFlow()
 
     /** Incremented each time a full revolution is detected (spoke angle wraps). */
     private val _revolutionCount = MutableStateFlow(0L)
@@ -348,6 +360,12 @@ class RadarRepository(
         _uiState.value = state.copy(controls = state.controls.copy(orientation = orientation))
     }
 
+    /** Toggle angular gap-fill between received spokes (UI-only preference). */
+    fun setSpokeGapFill(enabled: Boolean) {
+        val state = _uiState.value as? RadarUiState.Connected ?: return
+        _uiState.value = state.copy(controls = state.controls.copy(spokeGapFill = enabled))
+    }
+
     /**
      * Write an enum (segmented/chip) control value.
      *
@@ -395,7 +413,7 @@ class RadarRepository(
                     spokeClient.connect(radar.spokeDataUrl)
                         .collect { spoke ->
                             consecutiveFailures = 0
-                            _spokeFlow.value = spoke
+                            _spokeFlow.tryEmit(spoke)
                             if (spoke.rangeMetres > 0 && (lastRangeUpdateAngle < 0 || spoke.angle < lastRangeUpdateAngle)) {
                                 lastRangeUpdateAngle = spoke.angle
                                 _revolutionCount.value++

@@ -420,6 +420,10 @@ class RadarViewModel(application: Application) : AndroidViewModel(application) {
         repository.setOrientation(orientation)
     }
 
+    fun onSpokeGapFillChange(enabled: Boolean) {
+        repository.setSpokeGapFill(enabled)
+    }
+
     override fun onCleared() {
         repository.disconnect()
     }

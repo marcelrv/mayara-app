@@ -3,6 +3,7 @@ package com.marineyachtradar.mayara.ui.radar
 import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.LegendPixel
 import com.marineyachtradar.mayara.data.model.RadarLegend
+import com.marineyachtradar.mayara.data.model.SpokeData
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -70,7 +71,7 @@ class RadarTextureBufferTest {
         // and verify the column contents through a full update cycle.
         //
         // For pure data verification we use a helper that returns the buffer snapshot.
-        val buffer = ByteArray(RadarGLRenderer.DEFAULT_TEXTURE_ANGLE_SIZE * RadarGLRenderer.TEXTURE_RANGE_SIZE)
+        val buffer = ByteArray(RadarGLRenderer.DEFAULT_TEXTURE_ANGLE_SIZE * RadarGLRenderer.DEFAULT_TEXTURE_RANGE_SIZE)
         val helperRenderer = RadarGLRenderer()
         synchronized(helperRenderer) {
             helperRenderer.writeColumn(col, shortSpoke)
@@ -78,7 +79,7 @@ class RadarTextureBufferTest {
         }
         // Verify last row of column is zero (zero-padded).
         // We do this by writing a known non-zero array first, then a short spoke.
-        val fullBuf = ByteArray(RadarGLRenderer.TEXTURE_RANGE_SIZE) { 0xFF.toByte() }
+        val fullBuf = ByteArray(RadarGLRenderer.DEFAULT_TEXTURE_RANGE_SIZE) { 0xFF.toByte() }
         val helperRenderer2 = RadarGLRenderer()
         synchronized(helperRenderer2) {
             helperRenderer2.writeColumn(col, fullBuf)   // all 255
@@ -89,9 +90,9 @@ class RadarTextureBufferTest {
     }
 
     @Test
-    fun `writeColumn truncates spoke data longer than TEXTURE_RANGE_SIZE`() {
-        // Spoke with more bytes than TEXTURE_RANGE_SIZE — must not throw ArrayIndexOutOfBounds.
-        val longSpoke = ByteArray(RadarGLRenderer.TEXTURE_RANGE_SIZE + 100) { 0x7F }
+    fun `writeColumn truncates spoke data longer than textureRangeSize`() {
+        // Spoke with more bytes than textureRangeSize — must not throw ArrayIndexOutOfBounds.
+        val longSpoke = ByteArray(RadarGLRenderer.DEFAULT_TEXTURE_RANGE_SIZE + 100) { 0x7F }
         val renderer2 = RadarGLRenderer()
         synchronized(renderer2) {
             renderer2.writeColumn(0, longSpoke) // must not throw
@@ -99,37 +100,89 @@ class RadarTextureBufferTest {
     }
 
     // -----------------------------------------------------------------------
-    // Dynamic texture sizing via configureForSpokes
+    // Dynamic texture sizing via configureForRadar
     // -----------------------------------------------------------------------
 
     @Test
-    fun `configureForSpokes rounds up to next power of 2`() {
+    fun `configureForRadar rounds angle up to next power of 2`() {
         val r = RadarGLRenderer()
-        r.configureForSpokes(1440)  // Garmin: 1440 → 2048
+        r.configureForRadar(1440, 705)  // Garmin: 1440 → 2048
         assertEquals(2048, r.textureAngleSize)
+        assertEquals(705, r.textureRangeSize)
     }
 
     @Test
-    fun `configureForSpokes uses exact power of 2 when already power of 2`() {
+    fun `configureForRadar uses exact power of 2 when already power of 2`() {
         val r = RadarGLRenderer()
-        r.configureForSpokes(4096)  // Navico HALO: 4096 → 4096
+        r.configureForRadar(4096, 512)  // Navico HALO: 4096 → 4096
         assertEquals(4096, r.textureAngleSize)
+        assertEquals(512, r.textureRangeSize)
     }
 
     @Test
-    fun `configureForSpokes minimum is 512`() {
+    fun `configureForRadar minimum angle is 512`() {
         val r = RadarGLRenderer()
-        r.configureForSpokes(100)  // Very low spoke count → clamped to 512
+        r.configureForRadar(100, 300)  // Very low spoke count → clamped to 512
         assertEquals(512, r.textureAngleSize)
     }
 
     @Test
-    fun `computeColumn adapts after configureForSpokes`() {
+    fun `configureForRadar minimum range is 256`() {
         val r = RadarGLRenderer()
-        r.configureForSpokes(4096)
+        r.configureForRadar(1024, 50)  // Very short spokes → clamped to 256
+        assertEquals(256, r.textureRangeSize)
+    }
+
+    @Test
+    fun `computeColumn adapts after configureForRadar`() {
+        val r = RadarGLRenderer()
+        r.configureForRadar(4096, 1024)
         // Midpoint of 4096 spokes should map to midpoint of 4096 columns
         val col = r.computeColumn(angle = 2048, spokesPerRevolution = 4096)
         assertEquals(2048, col)
+    }
+
+    @Test
+    fun `updateSpoke fills missing intermediate columns`() {
+        val r = RadarGLRenderer()
+        r.configureForRadar(8, 4)
+        r.fillGapsEnabled = true
+
+        val low = spoke(angle = 1, data = byteArrayOf(10, 11, 12, 13))
+        val high = spoke(angle = 4, data = byteArrayOf(90, 91, 92, 93))
+
+        r.updateSpoke(low, spokesPerRevolution = 8)
+        r.updateSpoke(high, spokesPerRevolution = 8)
+
+        // Gap 1->4 fills angles 2 and 3 with the current spoke (angle=4) bytes.
+        val angle2col = r.computeColumn(angle = 2, spokesPerRevolution = 8)
+        val angle3col = r.computeColumn(angle = 3, spokesPerRevolution = 8)
+        val highCol   = r.computeColumn(angle = 4, spokesPerRevolution = 8)
+        assertEquals(90, r.sampleTexture(col = angle2col, row = 0))
+        assertEquals(93, r.sampleTexture(col = angle2col, row = 3))
+        assertEquals(90, r.sampleTexture(col = angle3col, row = 0))
+        assertEquals(90, r.sampleTexture(col = highCol,   row = 0))
+    }
+
+    @Test
+    fun `updateSpoke fills wrap-around gap`() {
+        val r = RadarGLRenderer()
+        r.configureForRadar(8, 4)
+        r.fillGapsEnabled = true
+
+        val wrappedCol = r.computeColumn(angle = 1, spokesPerRevolution = 8)
+        val wrapAngle0Col = r.computeColumn(angle = 0, spokesPerRevolution = 8)
+
+        val nearEnd = spoke(angle = 7, data = byteArrayOf(7, 7, 7, 7))
+        val wrapped = spoke(angle = 1, data = byteArrayOf(55, 56, 57, 58))
+
+        r.updateSpoke(nearEnd, spokesPerRevolution = 8)
+        r.updateSpoke(wrapped, spokesPerRevolution = 8)
+
+        // Wrap gap 7->1 fills angle 0 with the current spoke (angle=1) bytes.
+        assertEquals(55, r.sampleTexture(col = wrapAngle0Col, row = 0))
+        assertEquals(58, r.sampleTexture(col = wrapAngle0Col, row = 3))
+        assertEquals(55, r.sampleTexture(col = wrappedCol, row = 0))
     }
 
     // -----------------------------------------------------------------------
@@ -182,5 +235,14 @@ class RadarTextureBufferTest {
         assertEquals(0.toByte(), lut[3])
         // Index 1 should be opaque
         assertEquals(0xFF.toByte(), lut[7])
+    }
+
+    private fun spoke(angle: Int, data: ByteArray): SpokeData {
+        return SpokeData(
+            angle = angle,
+            bearing = null,
+            rangeMetres = 1200,
+            data = data,
+        )
     }
 }

@@ -17,11 +17,11 @@ import javax.microedition.khronos.opengles.GL10
  * OpenGL ES 2.0 renderer for the full-screen polar radar canvas.
  *
  * ## Texture layout
- * A [textureAngleSize]×[TEXTURE_RANGE_SIZE] [GL_LUMINANCE][GLES20.GL_LUMINANCE]
+ * A [textureAngleSize]×[textureRangeSize] [GL_LUMINANCE][GLES20.GL_LUMINANCE]
  * texture stores the radar sweep:
  *   - Column index  = spoke angle, mapped by `angle * textureAngleSize / spokesPerRevolution`
  *   - Row index 0   = radar center (nearest range)
- *   - Row index [TEXTURE_RANGE_SIZE]-1 = farthest range
+ *   - Row index [textureRangeSize]-1 = farthest range
  *   - Pixel value   = radar intensity 0–255
  *
  * ## Palette
@@ -48,13 +48,15 @@ class RadarGLRenderer : GLSurfaceView.Renderer {
     // -----------------------------------------------------------------------
 
     companion object {
-        /** Default angular (column) resolution — used until configured by [configureForSpokes]. */
+        /** Default angular (column) resolution — used until configured by [configureForRadar]. */
         const val DEFAULT_TEXTURE_ANGLE_SIZE = 2048
-        /** Range (row) resolution — accommodates typical spoke data lengths. */
-        const val TEXTURE_RANGE_SIZE = 1024
-        @Deprecated("Use textureAngleSize or TEXTURE_RANGE_SIZE", level = DeprecationLevel.HIDDEN)
+        /** Default range (row) resolution — used until configured by [configureForRadar]. */
+        const val DEFAULT_TEXTURE_RANGE_SIZE = 1024
+        @Deprecated("Use textureAngleSize or textureRangeSize", level = DeprecationLevel.HIDDEN)
         const val TEXTURE_ANGLE_SIZE = DEFAULT_TEXTURE_ANGLE_SIZE   // back-compat for tests
-        @Deprecated("Use textureAngleSize or TEXTURE_RANGE_SIZE", level = DeprecationLevel.HIDDEN)
+        @Deprecated("Use textureAngleSize or textureRangeSize", level = DeprecationLevel.HIDDEN)
+        const val TEXTURE_RANGE_SIZE = DEFAULT_TEXTURE_RANGE_SIZE   // back-compat for tests
+        @Deprecated("Use textureAngleSize or textureRangeSize", level = DeprecationLevel.HIDDEN)
         const val TEXTURE_SIZE = DEFAULT_TEXTURE_ANGLE_SIZE   // back-compat for tests
         const val MIN_ZOOM = 1f
         const val MAX_ZOOM = 10f
@@ -172,13 +174,25 @@ void main() {
 
     private val textureLock = Any()
 
-    /** Current angular (column) resolution — may change via [configureForSpokes]. */
+    /** Current angular (column) resolution — may change via [configureForRadar]. */
     @Volatile
     var textureAngleSize = DEFAULT_TEXTURE_ANGLE_SIZE
         private set
 
-    /** Flat textureAngleSize×TEXTURE_RANGE_SIZE luminance buffer: [col + row * textureAngleSize] = intensity. */
-    private var textureBuffer = ByteArray(textureAngleSize * TEXTURE_RANGE_SIZE)
+    /** Current range (row) resolution — may change via [configureForRadar]. */
+    @Volatile
+    var textureRangeSize = DEFAULT_TEXTURE_RANGE_SIZE
+        private set
+
+    /** Flat textureAngleSize×textureRangeSize luminance buffer: [col + row * textureAngleSize] = intensity. */
+    private var textureBuffer = ByteArray(textureAngleSize * textureRangeSize)
+
+    /** Last written texture column, used to fill angular gaps between received spokes. */
+    private var lastProcessedAngle = -1
+
+    /** When true, fills angular gaps between received spokes by repeating spoke data. */
+    @Volatile
+    var fillGapsEnabled: Boolean = false
 
     private val textureDirty = AtomicBoolean(false)
     private val textureSizeChanged = AtomicBoolean(false)
@@ -242,9 +256,42 @@ void main() {
     fun updateSpoke(spoke: SpokeData, spokesPerRevolution: Int) {
         val col = computeColumn(spoke.angle, spokesPerRevolution)
         synchronized(textureLock) {
+            if (fillGapsEnabled) fillGapAngles(spoke.angle, spokesPerRevolution, spoke.data)
             writeColumn(col, spoke.data)
+            lastProcessedAngle = spoke.angle
         }
         textureDirty.set(true)
+    }
+
+    /**
+     * Fill missing intermediate angles by repeating the current spoke data.
+     *
+     * Operates in spoke-angle space (matching the web FillSpokeProcessor), NOT
+     * in texture-column space.  This bounds the fill count to at most
+     * [spokesPerRevolution]/2 steps, preventing the startup-large-gap performance
+     * issue that occurred with column-space tracking (where textureAngleSize=2048
+     * made identical angle jumps appear 1.42× larger).
+     */
+    private fun fillGapAngles(currentAngle: Int, spokesPerRevolution: Int, data: ByteArray) {
+        val prev = lastProcessedAngle
+        if (prev < 0 || prev == currentAngle) return
+
+        val gap = if (currentAngle > prev) {
+            currentAngle - prev
+        } else {
+            // Wrap-around: high angle → low angle (new revolution)
+            spokesPerRevolution - prev + currentAngle
+        }
+
+        // Safety cap: skip if gap is more than half the revolution.
+        // A gap this large signals an anomalous sequence (startup, dropped spokes,
+        // out-of-order delivery) — filling would corrupt a large portion of the texture.
+        if (gap <= 1 || gap > spokesPerRevolution / 2) return
+
+        for (i in 1 until gap) {
+            val fillAngle = (prev + i) % spokesPerRevolution
+            writeColumn(computeColumn(fillAngle, spokesPerRevolution), data)
+        }
     }
 
     /**
@@ -264,12 +311,13 @@ void main() {
      */
     fun writeColumn(col: Int, data: ByteArray) {
         val angleSize = textureAngleSize
-        val rows = minOf(data.size, TEXTURE_RANGE_SIZE)
+        val rangeSize = textureRangeSize
+        val rows = minOf(data.size, rangeSize)
         for (row in 0 until rows) {
             textureBuffer[col + row * angleSize] = data[row]
         }
         // Zero-pad remaining rows if spoke is shorter than texture height.
-        for (row in rows until TEXTURE_RANGE_SIZE) {
+        for (row in rows until rangeSize) {
             textureBuffer[col + row * angleSize] = 0
         }
     }
@@ -317,24 +365,45 @@ void main() {
     fun clearAll() {
         synchronized(textureLock) {
             textureBuffer.fill(0)
+            lastProcessedAngle = -1
         }
         textureDirty.set(true)
     }
 
     /**
-     * Configure the angular texture resolution to match the radar's spoke count.
-     * Computes the next power of 2 ≥ [spokesPerRevolution] (minimum 512).
+     * Configure the texture dimensions to match the radar's capabilities.
+     * Angular size is rounded up to the next power of 2 ≥ [spokesPerRevolution] (minimum 512).
+     * Range size uses [maxSpokeLength] directly (matching the web app's texture layout).
      * Safe to call from any thread; the GL texture is recreated on the next frame.
      */
-    fun configureForSpokes(spokesPerRevolution: Int) {
-        val newSize = nextPowerOf2(maxOf(spokesPerRevolution, 512))
-        if (newSize != textureAngleSize) {
+    fun configureForRadar(spokesPerRevolution: Int, maxSpokeLength: Int) {
+        val newAngleSize = nextPowerOf2(maxOf(spokesPerRevolution, 512))
+        val newRangeSize = maxOf(maxSpokeLength, 256)
+        if (newAngleSize != textureAngleSize || newRangeSize != textureRangeSize) {
             synchronized(textureLock) {
-                textureAngleSize = newSize
-                textureBuffer = ByteArray(newSize * TEXTURE_RANGE_SIZE)
+                textureAngleSize = newAngleSize
+                textureRangeSize = newRangeSize
+                textureBuffer = ByteArray(newAngleSize * newRangeSize)
+                lastProcessedAngle = -1
             }
             textureSizeChanged.set(true)
         }
+    }
+
+    /** Test-only texture sampler (0..255), no GL context required. */
+    internal fun sampleTexture(col: Int, row: Int): Int {
+        synchronized(textureLock) {
+            val angleSize = textureAngleSize
+            val rangeSize = textureRangeSize
+            if (col !in 0 until angleSize || row !in 0 until rangeSize) return 0
+            return textureBuffer[col + row * angleSize].toInt() and 0xFF
+        }
+    }
+
+    /** @see configureForRadar */
+    @Deprecated("Use configureForRadar(spokesPerRevolution, maxSpokeLength)")
+    fun configureForSpokes(spokesPerRevolution: Int) {
+        configureForRadar(spokesPerRevolution, textureRangeSize)
     }
 
     // =======================================================================
@@ -375,10 +444,11 @@ void main() {
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_REPEAT)
         GLES20.glTexParameteri(GLES20.GL_TEXTURE_2D, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
         val angleSize = textureAngleSize
-        val emptyRadar = ByteBuffer.allocate(angleSize * TEXTURE_RANGE_SIZE)
+        val rangeSize = textureRangeSize
+        val emptyRadar = ByteBuffer.allocate(angleSize * rangeSize)
         GLES20.glTexImage2D(
             GLES20.GL_TEXTURE_2D, 0, GLES20.GL_LUMINANCE,
-            angleSize, TEXTURE_RANGE_SIZE, 0,
+            angleSize, rangeSize, 0,
             GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, emptyRadar
         )
 
@@ -433,14 +503,14 @@ void main() {
 
         // Upload radar texture if new spoke data arrived
         if (textureDirty.compareAndSet(true, false)) {
-            val (snapshot, angleSize) = synchronized(textureLock) {
-                textureBuffer.copyOf() to textureAngleSize
+            val (snapshot, angleSize, rangeSize) = synchronized(textureLock) {
+                Triple(textureBuffer.copyOf(), textureAngleSize, textureRangeSize)
             }
             val buf = ByteBuffer.wrap(snapshot)
             GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, radarTexture)
             GLES20.glTexSubImage2D(
                 GLES20.GL_TEXTURE_2D, 0, 0, 0,
-                angleSize, TEXTURE_RANGE_SIZE,
+                angleSize, rangeSize,
                 GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, buf
             )
         }
@@ -635,14 +705,15 @@ void main() {
     // Dynamic texture sizing helpers
     // =======================================================================
 
-    /** Recreate the GL radar texture with the current [textureAngleSize]. GL thread only. */
+    /** Recreate the GL radar texture with the current dimensions. GL thread only. */
     private fun recreateRadarTexture() {
         val angleSize = textureAngleSize
+        val rangeSize = textureRangeSize
         GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, radarTexture)
-        val empty = ByteBuffer.allocate(angleSize * TEXTURE_RANGE_SIZE)
+        val empty = ByteBuffer.allocate(angleSize * rangeSize)
         GLES20.glTexImage2D(
             GLES20.GL_TEXTURE_2D, 0, GLES20.GL_LUMINANCE,
-            angleSize, TEXTURE_RANGE_SIZE, 0,
+            angleSize, rangeSize, 0,
             GLES20.GL_LUMINANCE, GLES20.GL_UNSIGNED_BYTE, empty
         )
     }

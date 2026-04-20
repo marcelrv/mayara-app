@@ -9,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -17,6 +18,9 @@ import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.PowerState
 import com.marineyachtradar.mayara.data.model.RadarLegend
 import com.marineyachtradar.mayara.data.model.SpokeData
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.withContext
 
 /**
  * Holds the current pan offset and zoom level so that both the GL renderer
@@ -37,21 +41,25 @@ class RadarPanState {
 
 @Composable
 fun RadarGLView(
-    latestSpoke: SpokeData?,
+    spokeFlow: Flow<SpokeData>,
     spokesPerRevolution: Int,
+    maxSpokeLength: Int = RadarGLRenderer.DEFAULT_TEXTURE_RANGE_SIZE,
     palette: ColorPalette,
     legend: RadarLegend? = null,
     powerState: PowerState? = null,
     revolutionCount: Long = 0L,
     currentRangeIndex: Int = 0,
+    spokeGapFill: Boolean = false,
     panState: RadarPanState? = null,
     modifier: Modifier = Modifier,
 ) {
     val renderer = remember { RadarGLRenderer() }
+    // Holds the GLSurfaceView once created by AndroidView.factory so the coroutine can post to it.
+    val glSurfaceViewRef = remember { mutableStateOf<GLSurfaceView?>(null) }
 
-    // Configure texture angular resolution to match radar's spoke count.
-    LaunchedEffect(spokesPerRevolution) {
-        renderer.configureForSpokes(spokesPerRevolution)
+    // Configure texture dimensions to match radar's capabilities.
+    LaunchedEffect(spokesPerRevolution, maxSpokeLength) {
+        renderer.configureForRadar(spokesPerRevolution, maxSpokeLength)
     }
 
     LaunchedEffect(powerState) {
@@ -73,13 +81,30 @@ fun RadarGLView(
         renderer.setLegendPalette(legend)
     }
 
+    LaunchedEffect(spokeGapFill) {
+        renderer.fillGapsEnabled = spokeGapFill
+    }
+
+    // Collect every spoke on a background thread and post each to the GL thread via
+    // queueEvent.  This bypasses Compose state entirely, so:
+    //   1. No spokes are dropped (SharedFlow is non-conflating).
+    //   2. The main thread is never blocked by texture writes.
+    //   3. Gap fill sees the true inter-spoke gaps (usually 1–2 angles).
+    LaunchedEffect(spokeFlow, spokesPerRevolution) {
+        withContext(Dispatchers.Default) {
+            spokeFlow.collect { spoke ->
+                val glSv = glSurfaceViewRef.value ?: return@collect
+                glSv.queueEvent { renderer.updateSpoke(spoke, spokesPerRevolution) }
+            }
+        }
+    }
+
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            createGLSurfaceView(context, renderer, panState)
+            createGLSurfaceView(context, renderer, panState).also { glSurfaceViewRef.value = it }
         },
         update = { _ ->
-            latestSpoke?.let { renderer.updateSpoke(it, spokesPerRevolution) }
             renderer.setPalette(palette)
         }
     )

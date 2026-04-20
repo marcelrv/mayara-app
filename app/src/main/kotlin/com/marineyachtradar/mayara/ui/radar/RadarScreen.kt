@@ -41,6 +41,7 @@ import com.marineyachtradar.mayara.data.model.ColorPalette
 import com.marineyachtradar.mayara.data.model.DistanceUnit
 import com.marineyachtradar.mayara.data.model.RadarOrientation
 import com.marineyachtradar.mayara.data.model.RadarUiState
+import com.marineyachtradar.mayara.data.model.SpokeData
 import com.marineyachtradar.mayara.ui.connection.ConnectionPickerDialog
 import com.marineyachtradar.mayara.ui.radar.RadarGLRenderer.Companion.DEFAULT_TEXTURE_ANGLE_SIZE
 import com.marineyachtradar.mayara.ui.radar.bottomsheet.RadarControlSheet
@@ -73,7 +74,6 @@ fun RadarScreen(
     viewModel: RadarViewModel = viewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val latestSpoke by viewModel.spokeFlow.collectAsState()
     val revolutionCount by viewModel.revolutionCount.collectAsState()
     val showControlSheet by viewModel.showControlSheet.collectAsState()
     val showConnectionPicker by viewModel.showConnectionPicker.collectAsState()
@@ -83,6 +83,8 @@ fun RadarScreen(
 
     val spokesPerRevolution = (uiState as? RadarUiState.Connected)
         ?.capabilities?.spokesPerRevolution ?: RadarGLRenderer.DEFAULT_TEXTURE_ANGLE_SIZE
+    val maxSpokeLength = (uiState as? RadarUiState.Connected)
+        ?.capabilities?.maxSpokeLength ?: RadarGLRenderer.DEFAULT_TEXTURE_RANGE_SIZE
     val palette = (uiState as? RadarUiState.Connected)
         ?.controls?.palette ?: ColorPalette.GREEN
 
@@ -94,6 +96,7 @@ fun RadarScreen(
     val ranges = (uiState as? RadarUiState.Connected)?.capabilities?.ranges ?: emptyList()
     val currentRangeIndex = (uiState as? RadarUiState.Connected)?.currentRangeIndex ?: 0
     val orientation = (uiState as? RadarUiState.Connected)?.controls?.orientation ?: RadarOrientation.HEAD_UP
+    val spokeGapFill = (uiState as? RadarUiState.Connected)?.controls?.spokeGapFill ?: false
     val context = LocalContext.current
     val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
     val panState = remember { RadarPanState() }
@@ -102,9 +105,10 @@ fun RadarScreen(
         PortraitRadarLayout(
             viewModel = viewModel,
             uiState = uiState,
-            latestSpoke = latestSpoke,
+            spokeFlow = viewModel.spokeFlow,
             revolutionCount = revolutionCount,
             spokesPerRevolution = spokesPerRevolution,
+            maxSpokeLength = maxSpokeLength,
             palette = palette,
             legend = legend,
             navigationData = navigationData,
@@ -114,6 +118,7 @@ fun RadarScreen(
             currentRangeIndex = currentRangeIndex,
             distanceUnit = distanceUnit,
             orientation = orientation,
+            spokeGapFill = spokeGapFill,
             panState = panState,
             context = context,
         )
@@ -121,9 +126,10 @@ fun RadarScreen(
         LandscapeRadarLayout(
             viewModel = viewModel,
             uiState = uiState,
-            latestSpoke = latestSpoke,
+            spokeFlow = viewModel.spokeFlow,
             revolutionCount = revolutionCount,
             spokesPerRevolution = spokesPerRevolution,
+            maxSpokeLength = maxSpokeLength,
             palette = palette,
             legend = legend,
             navigationData = navigationData,
@@ -133,6 +139,7 @@ fun RadarScreen(
             currentRangeIndex = currentRangeIndex,
             distanceUnit = distanceUnit,
             orientation = orientation,
+            spokeGapFill = spokeGapFill,
             panState = panState,
             context = context,
         )
@@ -151,6 +158,7 @@ fun RadarScreen(
                 onInterferenceChange = { idx -> viewModel.onInterferenceChange(idx) },
                 onPaletteChange = { viewModel.onPaletteChange(it) },
                 onOrientationChange = { viewModel.onOrientationChange(it) },
+                onSpokeGapFillChange = { viewModel.onSpokeGapFillChange(it) },
                 onDismiss = { viewModel.onDismissControlSheet() },
             )
         }
@@ -190,9 +198,10 @@ fun RadarScreen(
 private fun LandscapeRadarLayout(
     viewModel: RadarViewModel,
     uiState: RadarUiState,
-    latestSpoke: com.marineyachtradar.mayara.data.model.SpokeData?,
+    spokeFlow: kotlinx.coroutines.flow.Flow<SpokeData>,
     revolutionCount: Long,
     spokesPerRevolution: Int,
+    maxSpokeLength: Int,
     palette: ColorPalette,
     legend: com.marineyachtradar.mayara.data.model.RadarLegend?,
     navigationData: com.marineyachtradar.mayara.data.model.NavigationData?,
@@ -202,18 +211,21 @@ private fun LandscapeRadarLayout(
     currentRangeIndex: Int,
     distanceUnit: DistanceUnit,
     orientation: RadarOrientation,
+    spokeGapFill: Boolean,
     panState: RadarPanState,
     context: android.content.Context,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         RadarGLView(
-            latestSpoke = latestSpoke,
+            spokeFlow = spokeFlow,
             spokesPerRevolution = spokesPerRevolution,
+            maxSpokeLength = maxSpokeLength,
             palette = palette,
             legend = legend,
             powerState = (uiState as? RadarUiState.Connected)?.powerState,
             revolutionCount = revolutionCount,
             currentRangeIndex = currentRangeIndex,
+            spokeGapFill = spokeGapFill,
             panState = panState,
             modifier = Modifier.fillMaxSize(),
         )
@@ -344,9 +356,10 @@ private fun LandscapeRadarLayout(
 private fun PortraitRadarLayout(
     viewModel: RadarViewModel,
     uiState: RadarUiState,
-    latestSpoke: com.marineyachtradar.mayara.data.model.SpokeData?,
+    spokeFlow: kotlinx.coroutines.flow.Flow<SpokeData>,
     revolutionCount: Long,
     spokesPerRevolution: Int,
+    maxSpokeLength: Int,
     palette: ColorPalette,
     legend: com.marineyachtradar.mayara.data.model.RadarLegend?,
     navigationData: com.marineyachtradar.mayara.data.model.NavigationData?,
@@ -356,18 +369,21 @@ private fun PortraitRadarLayout(
     currentRangeIndex: Int,
     distanceUnit: DistanceUnit,
     orientation: RadarOrientation,
+    spokeGapFill: Boolean,
     panState: RadarPanState,
     context: android.content.Context,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         RadarGLView(
-            latestSpoke = latestSpoke,
+            spokeFlow = spokeFlow,
             spokesPerRevolution = spokesPerRevolution,
+            maxSpokeLength = maxSpokeLength,
             palette = palette,
             legend = legend,
             powerState = (uiState as? RadarUiState.Connected)?.powerState,
             revolutionCount = revolutionCount,
             currentRangeIndex = currentRangeIndex,
+            spokeGapFill = spokeGapFill,
             panState = panState,
             modifier = Modifier.fillMaxSize(),
         )
