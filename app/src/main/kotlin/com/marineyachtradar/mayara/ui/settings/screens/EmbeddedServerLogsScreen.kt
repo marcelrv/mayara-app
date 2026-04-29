@@ -1,10 +1,7 @@
 package com.marineyachtradar.mayara.ui.settings.screens
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -136,13 +133,29 @@ fun EmbeddedServerLogsScreen(
         },
     ) { paddingValues ->
         val allLines = logs.lines()
-        val lines = if (selectedLevel.prefix == null) {
-            allLines
-        } else {
-            allLines.filter { it.startsWith(selectedLevel.prefix) }
+        // When filtering by level, keep continuation lines (stack traces, etc.)
+        // that belong to a matching parent entry (lines without a level prefix).
+        val lines = when (selectedLevel) {
+            LogLevel.ALL -> allLines
+            else -> {
+                var inMatchingGroup = false
+                allLines.filter { line ->
+                    val isLevelLine = line.startsWith("[INFO]") || line.startsWith("[WARN]") || line.startsWith("[ERROR]")
+                    if (isLevelLine) {
+                        inMatchingGroup = line.startsWith(selectedLevel.prefix!!)
+                    }
+                    inMatchingGroup
+                }
+            }
         }
 
-        if (lines.isEmpty()) {
+        val emptyMessage = when {
+            logs.isEmpty() -> "No logs available"
+            lines.isEmpty() -> "No ${selectedLevel.label} entries"
+            else -> null
+        }
+
+        if (emptyMessage != null) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -150,7 +163,7 @@ fun EmbeddedServerLogsScreen(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = if (logs.isEmpty()) "No logs available" else "No ${selectedLevel.label} entries",
+                    text = emptyMessage,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
