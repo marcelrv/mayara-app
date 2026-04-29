@@ -2,6 +2,7 @@ package com.marineyachtradar.mayara.ui.settings.screens
 
 import android.os.Build
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -22,8 +23,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import com.marineyachtradar.mayara.R
 
@@ -117,9 +120,20 @@ fun AppInfoScreen(
                 HorizontalDivider()
             }
             item {
+                val uriHandler = LocalUriHandler.current
+                val mayaraUrl = "https://github.com/marcelrv/mayara-server"
                 ListItem(
                     headlineContent = { Text("mayara-server") },
-                    trailingContent = { Text("GPL-2.0") },
+                    supportingContent = {
+                        Text(
+                            text = "github.com/marcelrv/mayara-server",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            textDecoration = TextDecoration.Underline,
+                        )
+                    },
+                    trailingContent = { Text("Apache-2.0") },
+                    modifier = Modifier.clickable { uriHandler.openUri(mayaraUrl) },
                 )
             }
 
