@@ -85,7 +85,21 @@ fun ConnectionPickerDialog(
         if (uri != null) {
             // Copy the file into the app's cache directory so the JNI (Rust) layer gets a real path.
             val resolver = context.contentResolver
-            val displayName = uri.lastPathSegment ?: "replay.pcap"
+            // Query the display name so we always get a simple filename (e.g. "radar.pcap.gz")
+            // rather than a raw path segment like "raw:/storage/emulated/0/.../radar.pcap.gz"
+            // which would cause File(cacheDir, name) to create an invalid nested path.
+            val displayName = resolver.query(
+                uri,
+                arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                null, null, null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val displayNameColumnIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (displayNameColumnIndex != -1) cursor.getString(displayNameColumnIndex) else null
+                } else {
+                    null
+                }
+            } ?: java.io.File(uri.lastPathSegment ?: "").name.ifEmpty { "replay.pcap" }
             val dest = java.io.File(context.cacheDir, displayName)
             try {
                 resolver.openInputStream(uri)?.use { input ->

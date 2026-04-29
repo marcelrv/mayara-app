@@ -175,6 +175,38 @@ class ConnectionPickerStateTest {
         assertFalse(pcap == embedded)
     }
 
+    // ------------------------------------------------------------------
+    // PCAP filename extraction (mirrors dialog's OpenableColumns fallback logic)
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `pcap filename extraction strips raw scheme and path prefix`() {
+        // Downloads provider lastPathSegment looks like "raw:/storage/emulated/0/Download/file.pcap.gz"
+        val lastPathSegment = "raw:/storage/emulated/0/Download/02 radar power up - radarpi detect.pcap.gz"
+        val filename = java.io.File(lastPathSegment).name
+        assertEquals("02 radar power up - radarpi detect.pcap.gz", filename)
+    }
+
+    @Test
+    fun `pcap filename extraction handles simple filename segment`() {
+        val lastPathSegment = "navico_halo.pcap"
+        val filename = java.io.File(lastPathSegment).name.ifEmpty { "replay.pcap" }
+        assertEquals("navico_halo.pcap", filename)
+    }
+
+    @Test
+    fun `pcap filename extraction falls back to replay pcap for empty segment`() {
+        val filename = java.io.File("").name.ifEmpty { "replay.pcap" }
+        assertEquals("replay.pcap", filename)
+    }
+
+    @Test
+    fun `pcap filename extraction falls back to replay pcap for null segment`() {
+        val lastPathSegment: String? = null
+        val filename = java.io.File(lastPathSegment ?: "").name.ifEmpty { "replay.pcap" }
+        assertEquals("replay.pcap", filename)
+    }
+
     private fun isValidPort(input: String): Boolean =
         input.toIntOrNull()?.let { it in 1..65535 } == true
 
