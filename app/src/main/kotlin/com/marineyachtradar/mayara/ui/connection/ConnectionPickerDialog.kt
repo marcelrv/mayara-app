@@ -93,7 +93,12 @@ fun ConnectionPickerDialog(
                 arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
                 null, null, null,
             )?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
+                if (cursor.moveToFirst()) {
+                    val displayNameColumnIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (displayNameColumnIndex != -1) cursor.getString(displayNameColumnIndex) else null
+                } else {
+                    null
+                }
             } ?: java.io.File(uri.lastPathSegment ?: "").name.ifEmpty { "replay.pcap" }
             val dest = java.io.File(context.cacheDir, displayName)
             try {
