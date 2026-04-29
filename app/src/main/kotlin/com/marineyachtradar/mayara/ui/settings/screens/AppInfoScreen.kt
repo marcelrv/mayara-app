@@ -121,12 +121,12 @@ fun AppInfoScreen(
             }
             item {
                 val uriHandler = LocalUriHandler.current
-                val mayaraUrl = "https://github.com/marcelrv/mayara-server"
+                val mayaraUrl = "https://github.com/MarineYachtRadar/mayara-server"
                 ListItem(
                     headlineContent = { Text("mayara-server") },
                     supportingContent = {
                         Text(
-                            text = "github.com/marcelrv/mayara-server",
+                            text = "github.com/MarineYachtRadar/mayara-server",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             textDecoration = TextDecoration.Underline,

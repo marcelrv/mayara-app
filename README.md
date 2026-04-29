@@ -66,4 +66,4 @@ This application is licensed under the **GNU General Public License v2.0**
 (GPL-2.0). See [LICENSE](LICENSE) for details.
 
 The embedded **mayara-server** library is also GPL-2.0 licensed —
-see the [mayara project](https://github.com/MarineYachtRadar/mayara-server) for details.
+see the [mayara project](https://github.com/MarineYachtRadar/mayara-servera) for details.

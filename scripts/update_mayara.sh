@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
-# update_mayara.sh — Pull the latest mayara-server changes from upstream and rebuild.
+# update_mayara.sh — Pull upstream mayara-server changes into the fork submodule and rebuild.
 #
 # This script:
-#   1. Pulls the latest changes from the upstream mayara-server (MarineYachtRadar/mayara-server).
-#   2. Rebuilds libradar.so.
+#   1. Fetches the upstream (original MarineYachtRadar/mayara-server) into the fork.
+#   2. Merges into the fork's main branch.
+#   3. Rebuilds libradar.so.
+#
+# One-time setup (run once after forking):
+#   cd mayara-server
+#   git remote add upstream https://github.com/MarineYachtRadar/mayara-server.git
+#   cd ..
 #
 # Usage:
 #   bash scripts/update_mayara.sh
@@ -22,7 +28,15 @@ fi
 
 cd "${SUBMODULE_DIR}"
 
-# Guard: warn if there are uncommitted changes (they would be overwritten)
+# Verify upstream remote exists
+if ! git remote get-url upstream &>/dev/null; then
+    echo "ERROR: 'upstream' remote not configured in mayara-server." >&2
+    echo "       Run inside mayara-server/:" >&2
+    echo "       git remote add upstream https://github.com/MarineYachtRadar/mayara-server.git" >&2
+    exit 1
+fi
+
+# Guard: warn if there are uncommitted changes (they would be overwritten by merge)
 if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "WARNING: Uncommitted changes detected in mayara-server submodule."
     read -rp "Continue anyway? [y/N] " confirm
@@ -32,11 +46,11 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
     fi
 fi
 
-echo "==> Fetching latest changes from upstream..."
-git fetch origin
+echo "==> Fetching upstream changes..."
+git fetch upstream
 
-echo "==> Merging origin/main..."
-git merge origin/main --no-edit
+echo "==> Merging upstream/main into current branch..."
+git merge upstream/main --no-edit
 
 echo "==> Running upstream tests to verify merge..."
 cargo test --features emulator 2>&1 | tail -20
